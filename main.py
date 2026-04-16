@@ -2,501 +2,518 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import ta
-from datetime import datetime
-import time
 
 # Page configuration
 st.set_page_config(
-    page_title="Stock Screener - Mean Reversion & Trend Following",
-    page_icon="📈",
+    page_title="Stock Signal Scanner",
+    page_icon="📊",
     layout="wide"
 )
 
-# Title and description
-st.title("📊 Technical Analysis Stock Screener")
-st.markdown("""
-This screener analyzes stocks using two distinct trading strategies:
-- **📉 Mean Reversion**: Buys oversold dips (RSI < 30, Price < SMA20, Volume confirmation)
-- **📈 Trend Following**: Buys momentum continuations (RSI > 50, Price > SMA20, SMA20 > SMA50)
-""")
+st.title("📊 Stock Signal Scanner")
+st.markdown("Scan stocks for technical analysis signals")
 
 # Initialize session state for tickers
 if 'tickers' not in st.session_state:
-    # Default tickers
     st.session_state.tickers = [
-        'BBCA.JK', 'BNGA.JK', 'NISP.JK', 'BMRI.JK', 'BBRI.JK', 'BBNI.JK', 'BRIS.JK', 'BBTN.JK',
-        'ASII.JK', 'UNTR.JK', 'AALI.JK', 'ASGR.JK', 'AUTO.JK',
-        'KLBF.JK', 'HEAL.JK', 'MIKA.JK', 'TSPC.JK', 'SIDO.JK',
-        'TLKM.JK', 'INDF.JK', 'ICBP.JK'
+        'AALI.JK', 'ARTO.JK', 'ASGR.JK', 'ASII.JK', 'AUTO.JK',
+        'BBCA.JK', 'BBNI.JK', 'BBRI.JK', 'BBTN.JK', 'BDMN.JK',
+        'BJBR.JK', 'BJTM.JK', 'BMRI.JK', 'BNGA.JK', 'BNLI.JK',
+        'BRIS.JK', 'BTPS.JK', 'BTPN.JK', 'HEAL.JK', 'ICBP.JK',
+        'INDF.JK', 'KLBF.JK', 'MARK.JK', 'MIKA.JK', 'NISP.JK',
+        'OMED.JK', 'PNBN.JK', 'POWR.JK', 'SIDO.JK', 'SMSM.JK',
+        'TLKM.JK', 'TSPC.JK', 'UNTR.JK', 'MLBI.JK', 'DLTA.JK',
     ]
+    st.session_state.tickers.sort()
 
-# Sidebar - Ticker Management
-st.sidebar.header("🔧 Ticker Management")
+# Initialize session state for indicator parameters
+if 'indicator_params' not in st.session_state:
+    st.session_state.indicator_params = {
+        'rsi_period': 14,
+        'rsi_oversold': 30,
+        'rsi_trend': 50,
+        'sma_short': 20,
+        'sma_long': 50,
+        'macd_fast': 12,
+        'macd_slow': 26,
+        'macd_signal': 9,
+        'stoch_window': 14,
+        'stoch_smooth': 3,
+        'stoch_oversold': 20,
+        'bb_window': 20,
+        'bb_std': 2,
+        'obv_sma_period': 10,
+        'backtest_days': 120,
+        'take_profit_pct': 3.0,
+        'stop_loss_pct': 2.0
+    }
 
-# Display current tickers
-st.sidebar.subheader("Current Tickers")
-current_tickers_text = st.sidebar.text_area(
-    "Edit tickers (one per line):",
-    value="\n".join(st.session_state.tickers),
-    height=300,
-    help="Add or remove tickers. Use one ticker per line."
-)
+# Sidebar for configuration
+with st.sidebar:
+    st.header("⚙️ Configuration")
 
-# Update tickers button
-if st.sidebar.button("🔄 Update Ticker List"):
-    new_tickers = [t.strip().upper() for t in current_tickers_text.split('\n') if t.strip()]
-    if new_tickers:
-        st.session_state.tickers = new_tickers
-        st.sidebar.success(f"Updated to {len(new_tickers)} tickers")
-        st.rerun()
-    else:
-        st.sidebar.error("Please enter at least one ticker")
+    # Ticker Management
+    st.subheader("📋 Ticker Management")
 
-# Add single ticker
-st.sidebar.subheader("➕ Add Single Ticker")
-new_ticker = st.sidebar.text_input("Ticker symbol:", placeholder="e.g., AAPL, BBCA.JK")
-if st.sidebar.button("Add Ticker"):
-    if new_ticker and new_ticker.strip().upper() not in st.session_state.tickers:
-        st.session_state.tickers.append(new_ticker.strip().upper())
-        st.sidebar.success(f"Added {new_ticker.strip().upper()}")
-        st.rerun()
-    elif new_ticker and new_ticker.strip().upper() in st.session_state.tickers:
-        st.sidebar.warning("Ticker already exists")
-    else:
-        st.sidebar.warning("Please enter a ticker")
+    # Add new ticker
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        new_ticker = st.text_input("Add new ticker", placeholder="e.g., GOTO.JK", key="new_ticker")
+    with col2:
+        if st.button("Add", use_container_width=True):
+            if new_ticker and new_ticker.upper() not in st.session_state.tickers:
+                st.session_state.tickers.append(new_ticker.upper())
+                st.session_state.tickers.sort()
+                st.rerun()
+            elif new_ticker:
+                st.warning("Ticker already exists!")
 
-# Remove ticker
-st.sidebar.subheader("❌ Remove Ticker")
-remove_ticker = st.sidebar.selectbox("Select ticker to remove:", ["None"] + st.session_state.tickers)
-if st.sidebar.button("Remove Ticker") and remove_ticker != "None":
-    st.session_state.tickers.remove(remove_ticker)
-    st.sidebar.success(f"Removed {remove_ticker}")
-    st.rerun()
+    # Edit ticker
+    ticker_to_edit = st.selectbox("Select ticker to edit", st.session_state.tickers, key="edit_select")
+    edited_ticker = st.text_input("Edit ticker", value=ticker_to_edit if ticker_to_edit else "", key="edit_ticker")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Update", use_container_width=True):
+            if edited_ticker and edited_ticker != ticker_to_edit:
+                idx = st.session_state.tickers.index(ticker_to_edit)
+                st.session_state.tickers[idx] = edited_ticker.upper()
+                st.session_state.tickers.sort()
+                st.rerun()
+    with col2:
+        if st.button("Delete", use_container_width=True):
+            if ticker_to_edit in st.session_state.tickers:
+                st.session_state.tickers.remove(ticker_to_edit)
+                st.rerun()
 
-# Parameters
-st.sidebar.header("⚙️ Analysis Parameters")
-period = st.sidebar.selectbox("Data period:", ["1y", "6mo", "3mo", "2y", "max"], index=0)
-rsi_period = st.sidebar.number_input("RSI Period:", min_value=5, max_value=30, value=14)
-sma_short = st.sidebar.number_input("Short SMA Period:", min_value=5, max_value=50, value=20)
-sma_long = st.sidebar.number_input("Long SMA Period (Trend Following):", min_value=20, max_value=200, value=50)
+    st.divider()
 
-# Mean Reversion parameters
-st.sidebar.subheader("📉 Mean Reversion Parameters")
-rsi_oversold = st.sidebar.number_input("RSI Oversold Threshold:", min_value=10, max_value=40, value=30)
-volume_multiplier = st.sidebar.number_input("Volume Multiplier ( > avg):", min_value=0.5, max_value=3.0, value=1.0,
-                                            step=0.1)
-mr_entry_offset = st.sidebar.number_input(
-    "Entry Offset (% below SMA20):",
-    min_value=0.0, max_value=10.0, value=2.0, step=0.5,
-    help="Recommended buy price = SMA20 minus this percentage (for better risk/reward)"
-)
+    # Indicator Parameters
+    st.subheader("📊 Indicator Parameters")
 
-# Trend Following parameters
-st.sidebar.subheader("📈 Trend Following Parameters")
-rsi_momentum = st.sidebar.number_input("RSI Momentum Threshold:", min_value=40, max_value=70, value=50)
-tf_entry_offset = st.sidebar.number_input(
-    "Entry Offset (% below current price):",
-    min_value=0.0, max_value=5.0, value=0.0, step=0.5,
-    help="Recommended buy price = current price minus this percentage (0 = buy at market)"
-)
+    with st.expander("RSI Settings", expanded=False):
+        st.session_state.indicator_params['rsi_period'] = st.number_input(
+            "RSI Period", min_value=2, max_value=50,
+            value=st.session_state.indicator_params['rsi_period']
+        )
+        st.session_state.indicator_params['rsi_oversold'] = st.slider(
+            "RSI Oversold Threshold", min_value=10, max_value=40,
+            value=st.session_state.indicator_params['rsi_oversold']
+        )
+        st.session_state.indicator_params['rsi_trend'] = st.slider(
+            "RSI Trend Threshold", min_value=40, max_value=70,
+            value=st.session_state.indicator_params['rsi_trend']
+        )
 
-# Stop Loss parameters
-st.sidebar.subheader("🛑 Risk Management")
-mr_stop_loss_pct = st.sidebar.number_input(
-    "Mean Reversion Stop Loss (%):",
-    min_value=1.0, max_value=15.0, value=5.0, step=0.5,
-    help="Stop loss below recommended buy price"
-)
-tf_stop_loss_pct = st.sidebar.number_input(
-    "Trend Following Stop Loss (%):",
-    min_value=1.0, max_value=15.0, value=7.0, step=0.5,
-    help="Stop loss below recommended buy price"
-)
+    with st.expander("Moving Averages", expanded=False):
+        st.session_state.indicator_params['sma_short'] = st.number_input(
+            "Short SMA Period", min_value=5, max_value=50,
+            value=st.session_state.indicator_params['sma_short']
+        )
+        st.session_state.indicator_params['sma_long'] = st.number_input(
+            "Long SMA Period", min_value=20, max_value=200,
+            value=st.session_state.indicator_params['sma_long']
+        )
 
-# Advanced options
-st.sidebar.subheader("🔍 Advanced Options")
-request_delay = st.sidebar.number_input(
-    "Delay between requests (seconds):",
-    min_value=0.0, max_value=2.0, value=0.3, step=0.1,
-    help="Add delay to avoid rate limiting from Yahoo Finance"
-)
-debug_mode = st.sidebar.checkbox("Debug mode", value=False, help="Show detailed error messages")
+    with st.expander("MACD Settings", expanded=False):
+        st.session_state.indicator_params['macd_fast'] = st.number_input(
+            "MACD Fast", min_value=5, max_value=20,
+            value=st.session_state.indicator_params['macd_fast']
+        )
+        st.session_state.indicator_params['macd_slow'] = st.number_input(
+            "MACD Slow", min_value=15, max_value=40,
+            value=st.session_state.indicator_params['macd_slow']
+        )
+        st.session_state.indicator_params['macd_signal'] = st.number_input(
+            "MACD Signal", min_value=5, max_value=15,
+            value=st.session_state.indicator_params['macd_signal']
+        )
 
-# Run analysis button
-run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary", use_container_width=True)
+    with st.expander("Stochastic Settings", expanded=False):
+        st.session_state.indicator_params['stoch_window'] = st.number_input(
+            "Stochastic %K Period", min_value=5, max_value=30,
+            value=st.session_state.indicator_params['stoch_window']
+        )
+        st.session_state.indicator_params['stoch_smooth'] = st.number_input(
+            "Stochastic %K Smooth", min_value=2, max_value=5,
+            value=st.session_state.indicator_params['stoch_smooth']
+        )
+        st.session_state.indicator_params['stoch_oversold'] = st.slider(
+            "Stochastic Oversold", min_value=10, max_value=30,
+            value=st.session_state.indicator_params['stoch_oversold']
+        )
 
+    with st.expander("Bollinger Bands", expanded=False):
+        st.session_state.indicator_params['bb_window'] = st.number_input(
+            "BB Period", min_value=10, max_value=50,
+            value=st.session_state.indicator_params['bb_window']
+        )
+        st.session_state.indicator_params['bb_std'] = st.slider(
+            "BB Standard Deviations", min_value=1.0, max_value=3.0, step=0.5,
+            value=float(st.session_state.indicator_params['bb_std'])
+        )
 
-# Helper function to calculate recommended prices
-def calculate_recommended_price(strategy, current_close, sma_short, sma_long=None):
-    if strategy == "mean_reversion":
-        # Buy at a discount to SMA20 for better risk/reward
-        recommended_price = sma_short * (1 - mr_entry_offset / 100)
-        # Don't recommend buying above current price
-        if recommended_price > current_close:
-            recommended_price = current_close
-        return round(recommended_price, 2)
-    else:  # trend_following
-        # Momentum strategy - buy at market or slight pullback
-        if tf_entry_offset > 0:
-            recommended_price = current_close * (1 - tf_entry_offset / 100)
-        else:
-            recommended_price = current_close
-        return round(recommended_price, 2)
+    with st.expander("OBV Settings", expanded=False):
+        st.session_state.indicator_params['obv_sma_period'] = st.number_input(
+            "OBV SMA Period", min_value=5, max_value=30,
+            value=st.session_state.indicator_params['obv_sma_period']
+        )
 
+    with st.expander("Backtest & Risk Settings", expanded=False):
+        st.session_state.indicator_params['backtest_days'] = st.number_input(
+            "Backtest Period (days)", min_value=30, max_value=365,
+            value=st.session_state.indicator_params['backtest_days']
+        )
+        st.session_state.indicator_params['take_profit_pct'] = st.slider(
+            "Take Profit %", min_value=1.0, max_value=10.0, step=0.5,
+            value=float(st.session_state.indicator_params['take_profit_pct'])
+        )
+        st.session_state.indicator_params['stop_loss_pct'] = st.slider(
+            "Stop Loss %", min_value=1.0, max_value=10.0, step=0.5,
+            value=float(st.session_state.indicator_params['stop_loss_pct'])
+        )
+
+    # Scan button
+    st.divider()
+    scan_button = st.button("🔍 Run Scan", type="primary", use_container_width=True)
 
 # Main content area
-if run_analysis:
-    if not st.session_state.tickers:
-        st.error("Please add at least one ticker to analyze")
-        st.stop()
+if scan_button:
+    with st.spinner("Scanning stocks for signals..."):
+        # Get parameters from session state
+        params = st.session_state.indicator_params
 
-    # Progress bar
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+        # Define the historical backtesting period
+        BACKTEST_END_DATE = pd.Timestamp.now() - pd.Timedelta(days=1)
+        BACKTEST_START_DATE = BACKTEST_END_DATE - pd.Timedelta(days=params['backtest_days'])
+        BACKTEST_END_DATE_STR = BACKTEST_END_DATE.strftime('%Y-%m-%d')
+        BACKTEST_START_DATE_STR = BACKTEST_START_DATE.strftime('%Y-%m-%d')
 
-    # Containers for results
-    mean_reversion_signals = []
-    trend_following_signals = []
-    errors = []
-    debug_info = []
+        # Signal containers
+        all_signals = {
+            'Mean Reversion': [],
+            'Trend Following': [],
+            'MACD Crossover': [],
+            'Stochastic Oversold': [],
+            'Bollinger Band Reversion': [],
+            'OBV Accumulation': []
+        }
 
-    # Analyze each ticker
-    for idx, ticker in enumerate(st.session_state.tickers):
-        status_text.text(f"Analyzing {ticker}... ({idx + 1}/{len(st.session_state.tickers)})")
-        progress_bar.progress((idx + 1) / len(st.session_state.tickers))
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
-        # Add delay to avoid rate limiting
-        if idx > 0 and request_delay > 0:
-            time.sleep(request_delay)
+        for idx, ticker in enumerate(st.session_state.tickers):
+            try:
+                status_text.text(f"Processing {ticker}... ({idx + 1}/{len(st.session_state.tickers)})")
 
-        try:
-            # Fetch data
-            data = yf.Ticker(ticker).history(period=period)
+                # Fetch data
+                data = yf.Ticker(ticker).history(start=BACKTEST_START_DATE_STR, end=BACKTEST_END_DATE_STR)
 
-            # Debug info
-            if debug_mode:
-                debug_info.append(f"{ticker}: Retrieved {len(data)} rows of data")
+                if data.index.tz is not None:
+                    data.index = data.index.tz_convert(None)
 
-            # Check if data is empty
-            if data.empty:
-                errors.append(f"{ticker}: No data returned from Yahoo Finance")
-                continue
+                min_periods = max(params['sma_long'], params['macd_slow'])
+                if data.empty or len(data) < min_periods:
+                    continue
 
-            # Minimum data requirement - 30 days is usually enough for most indicators
-            if len(data) < 30:
-                errors.append(f"{ticker}: Only {len(data)} days of data available (need at least 30)")
-                continue
+                # Calculate indicators
+                rsi = ta.momentum.rsi(data['Close'], window=params['rsi_period'])
+                sma_short = data['Close'].rolling(window=params['sma_short']).mean()
+                sma_long = data['Close'].rolling(window=params['sma_long']).mean()
+                volume_sma = data['Volume'].rolling(window=params['sma_short']).mean()
 
-            # Calculate indicators
-            rsi = ta.momentum.rsi(data['Close'], window=rsi_period)
-            sma_short_val = data['Close'].rolling(window=sma_short).mean()
-            sma_long_val = data['Close'].rolling(window=sma_long).mean()
-            volume_sma = data['Volume'].rolling(window=20).mean()
+                # MACD calculation
+                macd_line = ta.trend.macd(
+                    data['Close'],
+                    window_slow=params['macd_slow'],
+                    window_fast=params['macd_fast']
+                )
+                macd_signal_line = ta.trend.macd_signal(
+                    data['Close'],
+                    window_slow=params['macd_slow'],
+                    window_fast=params['macd_fast'],
+                    window_sign=params['macd_signal']
+                )
 
-            # Get last values - handle NaN properly
-            last_close = data['Close'].iloc[-1]
-            last_volume = data['Volume'].iloc[-1]
+                stoch_k = ta.momentum.stoch(
+                    data['High'], data['Low'], data['Close'],
+                    window=params['stoch_window'],
+                    smooth_window=params['stoch_smooth']
+                )
+                stoch_d = ta.momentum.stoch_signal(
+                    data['High'], data['Low'], data['Close'],
+                    window=params['stoch_window'],
+                    smooth_window=params['stoch_smooth']
+                )
 
-            # Find last non-NaN RSI value
-            rsi_valid = rsi.dropna()
-            if len(rsi_valid) == 0:
-                errors.append(f"{ticker}: No valid RSI values (need at least {rsi_period + 1} data points)")
-                continue
-            last_rsi = rsi_valid.iloc[-1]
+                bb_low = ta.volatility.bollinger_lband(
+                    data['Close'],
+                    window=params['bb_window'],
+                    window_dev=params['bb_std']
+                )
 
-            # Find last non-NaN SMA short value
-            sma_short_valid = sma_short_val.dropna()
-            if len(sma_short_valid) == 0:
-                errors.append(f"{ticker}: No valid SMA{sma_short} values (need at least {sma_short} data points)")
-                continue
-            last_sma_short = sma_short_valid.iloc[-1]
+                obv = ta.volume.on_balance_volume(data['Close'], data['Volume'])
+                obv_sma = obv.rolling(window=params['obv_sma_period']).mean()
 
-            # For SMA long, we need enough data but it's optional for mean reversion
-            last_sma_long = None
-            if sma_long <= len(data):
-                sma_long_valid = sma_long_val.dropna()
-                if len(sma_long_valid) > 0:
-                    last_sma_long = sma_long_valid.iloc[-1]
+                # Latest values
+                last_close = data['Close'].iloc[-1]
+                last_rsi = rsi.iloc[-1]
+                last_sma_short = sma_short.iloc[-1]
+                last_sma_long = sma_long.iloc[-1]
+                last_volume = data['Volume'].iloc[-1]
+                last_volume_sma = volume_sma.iloc[-1]
+                last_macd = macd_line.iloc[-1]
+                last_macd_signal = macd_signal_line.iloc[-1]
+                last_stoch_k = stoch_k.iloc[-1]
+                last_stoch_d = stoch_d.iloc[-1]
+                last_bb_low = bb_low.iloc[-1]
+                last_obv = obv.iloc[-1]
+                last_obv_sma = obv_sma.iloc[-1]
 
-            # Volume SMA - more flexible
-            volume_sma_valid = volume_sma.dropna()
-            if len(volume_sma_valid) > 0:
-                last_volume_sma = volume_sma_valid.iloc[-1]
-            else:
-                last_volume_sma = data['Volume'].mean()  # Fallback to simple average
+                take_profit_multiplier = 1 + (params['take_profit_pct'] / 100)
+                stop_loss_multiplier = 1 - (params['stop_loss_pct'] / 100)
 
-            # Check for NaN values in critical indicators
-            if pd.isna(last_rsi) or pd.isna(last_sma_short) or pd.isna(last_volume_sma):
-                errors.append(f"{ticker}: Critical indicators contain NaN values")
-                if debug_mode:
-                    debug_info.append(
-                        f"{ticker}: RSI NaN: {pd.isna(last_rsi)}, SMA{sma_short} NaN: {pd.isna(last_sma_short)}")
-                continue
+                signal_date = pd.to_datetime(BACKTEST_END_DATE_STR)
 
-            # Debug output
-            if debug_mode:
-                debug_info.append(
-                    f"{ticker}: RSI={last_rsi:.2f}, Close={last_close:.2f}, SMA{sma_short}={last_sma_short:.2f}")
+                # Strategy checks
+                # Mean Reversion
+                if (not pd.isna(last_rsi) and not pd.isna(last_close) and not pd.isna(last_sma_short) and
+                        last_rsi < params[
+                            'rsi_oversold'] and last_close < last_sma_short and last_volume > last_volume_sma):
+                    all_signals['Mean Reversion'].append({
+                        'Ticker': ticker,
+                        'Buy Price': round(last_close, 2),
+                        'Sell Price': round(last_close * take_profit_multiplier, 2),
+                        'Stop Loss': round(last_close * stop_loss_multiplier, 2),
+                        'RSI': round(last_rsi, 2),
+                        f'SMA{params["sma_short"]}': round(last_sma_short, 2),
+                        'Volume Ratio': round(last_volume / last_volume_sma, 2) if last_volume_sma != 0 else 0,
+                        'Signal Date': signal_date
+                    })
 
-            # ============================================================
-            # STRATEGY 1: MEAN REVERSION
-            # ============================================================
-            mean_reversion_conditions = (
-                    last_rsi < rsi_oversold and
-                    last_close < last_sma_short and
-                    last_volume > (last_volume_sma * volume_multiplier)
+                # Trend Following
+                if (not pd.isna(last_rsi) and not pd.isna(last_close) and not pd.isna(last_sma_short) and not pd.isna(
+                        last_sma_long) and
+                        last_rsi > params[
+                            'rsi_trend'] and last_close > last_sma_short and last_sma_short > last_sma_long and last_volume > last_volume_sma):
+                    all_signals['Trend Following'].append({
+                        'Ticker': ticker,
+                        'Buy Price': round(last_close, 2),
+                        'Sell Price': round(last_close * take_profit_multiplier, 2),
+                        'Stop Loss': round(last_close * stop_loss_multiplier, 2),
+                        'RSI': round(last_rsi, 2),
+                        f'SMA{params["sma_short"]}': round(last_sma_short, 2),
+                        f'SMA{params["sma_long"]}': round(last_sma_long, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # MACD
+                if (not pd.isna(last_macd) and not pd.isna(last_macd_signal) and
+                        last_macd > last_macd_signal and last_macd < 0):
+                    all_signals['MACD Crossover'].append({
+                        'Ticker': ticker,
+                        'Buy Price': round(last_close, 2),
+                        'Sell Price': round(last_close * take_profit_multiplier, 2),
+                        'Stop Loss': round(last_close * stop_loss_multiplier, 2),
+                        'MACD': round(last_macd, 2),
+                        'MACD Signal': round(last_macd_signal, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # Stochastic
+                if (not pd.isna(last_stoch_k) and not pd.isna(last_stoch_d) and
+                        last_stoch_k > last_stoch_d and last_stoch_k < params['stoch_oversold']):
+                    all_signals['Stochastic Oversold'].append({
+                        'Ticker': ticker,
+                        'Buy Price': round(last_close, 2),
+                        'Sell Price': round(last_close * take_profit_multiplier, 2),
+                        'Stop Loss': round(last_close * stop_loss_multiplier, 2),
+                        'Stoch %K': round(last_stoch_k, 2),
+                        'Stoch %D': round(last_stoch_d, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # Bollinger Bands
+                if not pd.isna(last_bb_low) and last_close < last_bb_low:
+                    all_signals['Bollinger Band Reversion'].append({
+                        'Ticker': ticker,
+                        'Buy Price': round(last_close, 2),
+                        'Sell Price': round(last_close * take_profit_multiplier, 2),
+                        'Stop Loss': round(last_close * stop_loss_multiplier, 2),
+                        'Close': round(last_close, 2),
+                        'BB Lower': round(last_bb_low, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # OBV
+                if (not pd.isna(last_obv) and not pd.isna(last_obv_sma) and
+                        last_obv > last_obv_sma):
+                    all_signals['OBV Accumulation'].append({
+                        'Ticker': ticker,
+                        'Buy Price': round(last_close, 2),
+                        'Sell Price': round(last_close * take_profit_multiplier, 2),
+                        'Stop Loss': round(last_close * stop_loss_multiplier, 2),
+                        'OBV': round(last_obv, 2),
+                        f'OBV SMA{params["obv_sma_period"]}': round(last_obv_sma, 2),
+                        'Signal Date': signal_date
+                    })
+
+                progress_bar.progress((idx + 1) / len(st.session_state.tickers))
+
+            except Exception as e:
+                st.error(f"Error processing {ticker}: {e}")
+
+        status_text.text("Scan complete!")
+        progress_bar.empty()
+
+        # Display results
+        st.header("📊 Scan Results")
+
+        # Create summary table with checkmarks
+        st.subheader("Signal Summary Table")
+
+        # Get all tickers that have at least one signal
+        tickers_with_signals = set()
+        for strategy_name, signals in all_signals.items():
+            for signal in signals:
+                tickers_with_signals.add(signal['Ticker'])
+
+        if tickers_with_signals:
+            # Create summary DataFrame
+            summary_data = []
+            for ticker in sorted(tickers_with_signals):
+                row = {'Ticker': ticker}
+
+                # Check each strategy
+                row['Mean Reversion'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['Mean Reversion']) else ''
+                row['Trend Following'] = '✅' if any(
+                    s['Ticker'] == ticker for s in all_signals['Trend Following']) else ''
+                row['MACD'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['MACD Crossover']) else ''
+                row['Stochastic'] = '✅' if any(
+                    s['Ticker'] == ticker for s in all_signals['Stochastic Oversold']) else ''
+                row['Bollinger'] = '✅' if any(
+                    s['Ticker'] == ticker for s in all_signals['Bollinger Band Reversion']) else ''
+                row['OBV'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['OBV Accumulation']) else ''
+
+                # Count total signals for this ticker
+                total_signals = sum([
+                    any(s['Ticker'] == ticker for s in all_signals['Mean Reversion']),
+                    any(s['Ticker'] == ticker for s in all_signals['Trend Following']),
+                    any(s['Ticker'] == ticker for s in all_signals['MACD Crossover']),
+                    any(s['Ticker'] == ticker for s in all_signals['Stochastic Oversold']),
+                    any(s['Ticker'] == ticker for s in all_signals['Bollinger Band Reversion']),
+                    any(s['Ticker'] == ticker for s in all_signals['OBV Accumulation'])
+                ])
+                row['Total'] = total_signals
+
+                summary_data.append(row)
+
+            df_summary = pd.DataFrame(summary_data)
+            df_summary = df_summary.sort_values('Total', ascending=False)
+
+            # Summary metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Tickers with Signals", len(tickers_with_signals))
+            with col2:
+                total_signals_count = sum(len(signals) for signals in all_signals.values())
+                st.metric("Total Signals", total_signals_count)
+            with col3:
+                avg_signals = total_signals_count / len(tickers_with_signals) if tickers_with_signals else 0
+                st.metric("Avg Signals per Ticker", f"{avg_signals:.1f}")
+
+            # Display summary table
+            st.dataframe(
+                df_summary,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    'Ticker': st.column_config.TextColumn('Ticker', width='medium'),
+                    'Mean Reversion': st.column_config.TextColumn('Mean Reversion', width='small'),
+                    'Trend Following': st.column_config.TextColumn('Trend Following', width='small'),
+                    'MACD': st.column_config.TextColumn('MACD', width='small'),
+                    'Stochastic': st.column_config.TextColumn('Stochastic', width='small'),
+                    'Bollinger': st.column_config.TextColumn('Bollinger', width='small'),
+                    'OBV': st.column_config.TextColumn('OBV', width='small'),
+                    'Total': st.column_config.NumberColumn('Total Signals', width='small')
+                }
             )
 
-            if mean_reversion_conditions:
-                # Calculate recommended buy price
-                recommended_buy = calculate_recommended_price(
-                    "mean_reversion", last_close, last_sma_short
+            # Detailed view by strategy
+            st.subheader("Detailed View by Strategy")
+
+            strategy_tabs = st.tabs(list(all_signals.keys()))
+
+            for tab, (strategy_name, signals) in zip(strategy_tabs, all_signals.items()):
+                with tab:
+                    if signals:
+                        df_strategy = pd.DataFrame(signals)
+                        df_strategy['Signal Date'] = df_strategy['Signal Date'].dt.strftime('%Y-%m-%d')
+                        st.dataframe(df_strategy, use_container_width=True, hide_index=True)
+                        st.caption(f"Total: {len(signals)} signals")
+
+                        # Download button for individual strategy
+                        csv_strategy = df_strategy.to_csv(index=False)
+                        st.download_button(
+                            label=f"📥 Download {strategy_name} Results",
+                            data=csv_strategy,
+                            file_name=f"{strategy_name.lower().replace(' ', '_')}_{BACKTEST_END_DATE_STR}.csv",
+                            mime="text/csv",
+                            key=f"download_{strategy_name}"
+                        )
+                    else:
+                        st.info(f"No {strategy_name} signals found")
+
+            # Combined download button for all detailed data
+            st.divider()
+            all_detailed_data = []
+            for strategy_name, signals in all_signals.items():
+                for signal in signals:
+                    signal_copy = signal.copy()
+                    signal_copy['Strategy'] = strategy_name
+                    signal_copy['Signal Date'] = signal_copy['Signal Date'].strftime('%Y-%m-%d')
+                    all_detailed_data.append(signal_copy)
+
+            if all_detailed_data:
+                df_all_detailed = pd.DataFrame(all_detailed_data)
+                csv_all = df_all_detailed.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download All Detailed Results as CSV",
+                    data=csv_all,
+                    file_name=f"all_signals_detailed_{BACKTEST_END_DATE_STR}.csv",
+                    mime="text/csv"
                 )
+        else:
+            st.info("No signals found for any strategy in the current scan period.")
 
-                # Calculate stop loss
-                stop_loss = round(recommended_buy * (1 - mr_stop_loss_pct / 100), 2)
-
-                # Calculate potential upside to SMA20
-                upside_to_sma20 = ((last_sma_short - recommended_buy) / recommended_buy) * 100
-                risk_reward = round(upside_to_sma20 / mr_stop_loss_pct, 1) if upside_to_sma20 > 0 else 0
-
-                mean_reversion_signals.append({
-                    'Ticker': ticker,
-                    'Current Price': round(last_close, 2),
-                    '🎯 Recommended Buy': recommended_buy,
-                    'RSI': round(last_rsi, 2),
-                    f'SMA{sma_short}': round(last_sma_short, 2),
-                    'Volume Ratio': round(last_volume / last_volume_sma, 2),
-                    '🛑 Stop Loss': stop_loss,
-                    'Risk/Reward': f"1:{risk_reward}" if risk_reward > 0 else "N/A",
-                    'Price vs SMA': f"{((last_close / last_sma_short) - 1) * 100:.1f}%"
-                })
-
-            # ============================================================
-            # STRATEGY 2: TREND FOLLOWING
-            # ============================================================
-            if last_sma_long is not None:
-                trend_conditions = (
-                        last_rsi > rsi_momentum and
-                        last_close > last_sma_short and
-                        last_sma_short > last_sma_long
-                )
-
-                if trend_conditions:
-                    # Calculate recommended buy price
-                    recommended_buy = calculate_recommended_price(
-                        "trend_following", last_close, last_sma_short, last_sma_long
-                    )
-
-                    # Calculate stop loss
-                    stop_loss = round(recommended_buy * (1 - tf_stop_loss_pct / 100), 2)
-
-                    # Calculate potential upside to recent high (momentum target)
-                    recent_high = data['High'].rolling(window=20).max().iloc[-1]
-                    if pd.isna(recent_high):
-                        recent_high = last_close * 1.05  # Default 5% target
-                    upside_target = round(recent_high, 2)
-                    potential_return = ((upside_target - recommended_buy) / recommended_buy) * 100
-
-                    trend_following_signals.append({
-                        'Ticker': ticker,
-                        'Current Price': round(last_close, 2),
-                        '🎯 Recommended Buy': recommended_buy,
-                        'RSI': round(last_rsi, 2),
-                        f'SMA{sma_short}': round(last_sma_short, 2),
-                        f'SMA{sma_long}': round(last_sma_long, 2),
-                        '🛑 Stop Loss': stop_loss,
-                        '🎯 Target': upside_target,
-                        'Potential Return': f"{potential_return:.1f}%",
-                        'Trend Strength': f"{((last_sma_short / last_sma_long) - 1) * 100:.1f}%"
-                    })
-            elif debug_mode:
-                debug_info.append(f"{ticker}: Insufficient data for SMA{sma_long} (need {sma_long} days)")
-
-        except Exception as e:
-            errors.append(f"{ticker}: {str(e)}")
-            if debug_mode:
-                debug_info.append(f"{ticker}: Exception details - {type(e).__name__}: {str(e)}")
-
-    # Clear progress indicators
-    status_text.empty()
-    progress_bar.empty()
-
-    # ============================================================
-    # DISPLAY RESULTS
-    # ============================================================
-
-    st.markdown("---")
-
-    # Summary metrics
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Tickers Analyzed", len(st.session_state.tickers))
-    with col2:
-        st.metric("📉 Mean Reversion Signals", len(mean_reversion_signals),
-                  delta="Buy" if len(mean_reversion_signals) > 0 else None,
-                  delta_color="normal")
-    with col3:
-        st.metric("📈 Trend Following Signals", len(trend_following_signals),
-                  delta="Buy" if len(trend_following_signals) > 0 else None,
-                  delta_color="normal")
-    with col4:
-        total_signals = len(mean_reversion_signals) + len(trend_following_signals)
-        st.metric("Total Opportunities", total_signals)
-
-    st.markdown("---")
-
-    # Display Mean Reversion Results
-    st.header("📉 Mean Reversion Signals")
-    st.caption(f"""
-    **Strategy**: Buy when RSI < {rsi_oversold} (oversold) AND Price < SMA{sma_short} AND Volume > {volume_multiplier}x average
-    **Entry Rule**: Recommended buy = SMA{sma_short} - {mr_entry_offset}% (or current price if lower)
-    **Stop Loss**: {mr_stop_loss_pct}% below recommended buy price
-    """)
-
-    if mean_reversion_signals:
-        df_mr = pd.DataFrame(mean_reversion_signals)
-
-        # Display as formatted dataframe
-        st.dataframe(df_mr, use_container_width=True, hide_index=True)
-
-        # Download button
-        csv_mr = df_mr.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Mean Reversion Signals (CSV)",
-            data=csv_mr,
-            file_name=f"mean_reversion_signals_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv",
-            key="mr_download"
-        )
-
-        # Display explanation
-        with st.expander("ℹ️ How to use Mean Reversion signals"):
-            st.markdown(f"""
-            - **Recommended Buy**: Place a limit order at this price or lower
-            - **Stop Loss**: Set at {mr_stop_loss_pct}% below your entry price
-            - **Take Profit**: Consider taking profits when price reaches SMA{sma_short} or higher
-            - **Risk/Reward**: The ratio shows potential profit vs stop loss distance
-            - **Volume Ratio**: Higher values indicate stronger institutional interest
-            """)
-    else:
-        st.info("No mean reversion buy signals found with current parameters")
-
-    st.markdown("---")
-
-    # Display Trend Following Results
-    st.header("📈 Trend Following Signals")
-    st.caption(f"""
-    **Strategy**: Buy when RSI > {rsi_momentum} (momentum) AND Price > SMA{sma_short} AND SMA{sma_short} > SMA{sma_long}
-    **Entry Rule**: {'Market price' if tf_entry_offset == 0 else f'{tf_entry_offset}% below current price'}
-    **Stop Loss**: {tf_stop_loss_pct}% below recommended buy price
-    **Target**: Recent 20-day high
-    """)
-
-    if trend_following_signals:
-        df_tf = pd.DataFrame(trend_following_signals)
-
-        # Display as formatted dataframe
-        st.dataframe(df_tf, use_container_width=True, hide_index=True)
-
-        # Download button
-        csv_tf = df_tf.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Trend Following Signals (CSV)",
-            data=csv_tf,
-            file_name=f"trend_following_signals_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv",
-            key="tf_download"
-        )
-
-        # Display explanation
-        with st.expander("ℹ️ How to use Trend Following signals"):
-            st.markdown(f"""
-            - **Recommended Buy**: {'Buy at market price' if tf_entry_offset == 0 else f'Place limit order {tf_entry_offset}% below current price'}
-            - **Stop Loss**: Set at {tf_stop_loss_pct}% below your entry price
-            - **Take Profit**: Target recent 20-day high or trail stop loss as trend continues
-            - **Position Sizing**: Consider smaller positions as momentum strategies can have larger drawdowns
-            - **Trend Strength**: Positive values indicate strong uptrend confirmation
-            """)
-    else:
-        st.info("No trend following buy signals found with current parameters")
-
-    # Display errors if any
-    if errors:
-        st.markdown("---")
-        st.warning(f"⚠️ Errors encountered ({len(errors)} out of {len(st.session_state.tickers)} tickers):")
-        with st.expander("Show error details"):
-            for error in errors[:20]:  # Show first 20 errors
-                st.code(error)
-            if len(errors) > 20:
-                st.caption(f"... and {len(errors) - 20} more errors")
-
-    # Display debug info if enabled
-    if debug_mode and debug_info:
-        st.markdown("---")
-        with st.expander("🐛 Debug Information"):
-            for info in debug_info[:30]:
-                st.text(info)
-            if len(debug_info) > 30:
-                st.caption(f"... and {len(debug_info) - 30} more debug entries")
-
-    # Display timestamp
-    st.markdown("---")
-    st.caption(f"Analysis completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    st.caption(f"Data period: {period} | RSI period: {rsi_period} | SMA periods: {sma_short}/{sma_long}")
+        # Display current tickers
+        st.divider()
+        st.caption(
+            f"**Active Tickers ({len(st.session_state.tickers)}):** {', '.join(st.session_state.tickers[:10])}{'...' if len(st.session_state.tickers) > 10 else ''}")
 
 else:
-    # Initial state - no analysis run yet
-    st.info("👈 Configure your tickers and parameters in the sidebar, then click 'Run Analysis'")
+    # Show instructions when no scan has been run
+    st.info("👈 Configure your settings in the sidebar and click 'Run Scan' to start scanning for signals.")
 
-    # Show default tickers
-    with st.expander("📋 Current Ticker List"):
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Banking & Finance**")
-            st.write("\n".join(
-                [t for t in st.session_state.tickers if any(bank in t for bank in ['BBCA', 'BNGA', 'BBRI', 'BBNI'])]))
-        with col2:
-            st.write("**Others**")
-            st.write("\n".join([t for t in st.session_state.tickers if
-                                not any(bank in t for bank in ['BBCA', 'BNGA', 'BBRI', 'BBNI'])]))
+    # Display current configuration summary
+    st.subheader("Current Configuration")
 
-    # Quick guide
-    with st.expander("ℹ️ How to use this screener"):
-        st.markdown("""
-        ### Getting Started
-        1. **Manage tickers** in the sidebar (add/remove stocks)
-        2. **Adjust parameters** including:
-           - Entry offsets (buy at discount vs market)
-           - Stop loss percentages
-           - RSI thresholds and SMA periods
-        3. **Click 'Run Analysis'** to scan all tickers
+    col1, col2 = st.columns(2)
 
-        ### Strategy Explanations
+    with col1:
+        st.write("**Tickers:**")
+        st.write(f"Total: {len(st.session_state.tickers)} tickers")
+        st.write("**Indicator Settings:**")
+        params = st.session_state.indicator_params
+        st.write(
+            f"- RSI: Period {params['rsi_period']}, Oversold <{params['rsi_oversold']}, Trend >{params['rsi_trend']}")
+        st.write(f"- Moving Averages: SMA{params['sma_short']} / SMA{params['sma_long']}")
+        st.write(f"- MACD: {params['macd_fast']}/{params['macd_slow']}/{params['macd_signal']}")
 
-        **📉 Mean Reversion** (Buying dips):
-        - Looks for oversold conditions (RSI < 30)
-        - Price below moving average suggests potential bounce
-        - Volume confirmation helps identify genuine reversals
-        - **Recommended Buy**: SMA20 minus offset (buying at discount)
-
-        **📈 Trend Following** (Buying momentum):
-        - Confirms uptrend (RSI > 50, price above SMAs)
-        - SMA20 above SMA50 indicates bullish structure
-        - **Recommended Buy**: Market price or slight pullback
-
-        ### Tips
-        - Start with default parameters, then adjust based on backtesting
-        - Use stop losses to manage risk
-        - Consider market conditions (range-bound = mean reversion, trending = trend following)
-        - Enable debug mode if you encounter issues with data retrieval
-
-        ### Disclaimer
-        This tool is for educational purposes only. Past performance doesn't guarantee future results. Always do your own research before trading.
-        """)
-
-# Footer
-st.sidebar.markdown("---")
-st.sidebar.caption(
-    "⚠️ **Disclaimer**: For educational purposes only. Not financial advice. Recommended prices are suggestions, not guarantees.")
-st.sidebar.caption(f"🕐 Last session: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    with col2:
+        st.write("&nbsp;")
+        st.write(
+            f"- Stochastic: %K({params['stoch_window']},{params['stoch_smooth']}), Oversold <{params['stoch_oversold']}")
+        st.write(f"- Bollinger Bands: Period {params['bb_window']}, Std {params['bb_std']}")
+        st.write(f"- OBV: SMA{params['obv_sma_period']}")
+        st.write(f"- Backtest: {params['backtest_days']} days")
+        st.write(f"- Risk: TP +{params['take_profit_pct']}%, SL -{params['stop_loss_pct']}%")
