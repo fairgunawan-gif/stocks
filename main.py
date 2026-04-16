@@ -2,6 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import ta
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Page configuration
 st.set_page_config(
@@ -47,6 +49,14 @@ if 'indicator_params' not in st.session_state:
         'take_profit_pct': 3.0,
         'stop_loss_pct': 2.0
     }
+
+# Initialize session state for scan results
+if 'scan_results' not in st.session_state:
+    st.session_state.scan_results = None
+if 'all_signals' not in st.session_state:
+    st.session_state.all_signals = None
+if 'backtest_data' not in st.session_state:
+    st.session_state.backtest_data = {}
 
 # Sidebar for configuration
 with st.sidebar:
@@ -198,6 +208,9 @@ if scan_button:
             'OBV Accumulation': []
         }
 
+        # Store backtest data for each ticker
+        backtest_data = {}
+
         progress_bar = st.progress(0)
         status_text = st.empty()
 
@@ -233,6 +246,12 @@ if scan_button:
                     window_fast=params['macd_fast'],
                     window_sign=params['macd_signal']
                 )
+                macd_histogram = ta.trend.macd_diff(
+                    data['Close'],
+                    window_slow=params['macd_slow'],
+                    window_fast=params['macd_fast'],
+                    window_sign=params['macd_signal']
+                )
 
                 stoch_k = ta.momentum.stoch(
                     data['High'], data['Low'], data['Close'],
@@ -245,6 +264,15 @@ if scan_button:
                     smooth_window=params['stoch_smooth']
                 )
 
+                bb_upper = ta.volatility.bollinger_hband(
+                    data['Close'],
+                    window=params['bb_window'],
+                    window_dev=params['bb_std']
+                )
+                bb_middle = ta.volatility.bollinger_mavg(
+                    data['Close'],
+                    window=params['bb_window']
+                )
                 bb_low = ta.volatility.bollinger_lband(
                     data['Close'],
                     window=params['bb_window'],
@@ -253,6 +281,25 @@ if scan_button:
 
                 obv = ta.volume.on_balance_volume(data['Close'], data['Volume'])
                 obv_sma = obv.rolling(window=params['obv_sma_period']).mean()
+
+                # Store backtest data
+                backtest_data[ticker] = {
+                    'data': data,
+                    'rsi': rsi,
+                    'sma_short': sma_short,
+                    'sma_long': sma_long,
+                    'volume_sma': volume_sma,
+                    'macd_line': macd_line,
+                    'macd_signal': macd_signal_line,
+                    'macd_histogram': macd_histogram,
+                    'stoch_k': stoch_k,
+                    'stoch_d': stoch_d,
+                    'bb_upper': bb_upper,
+                    'bb_middle': bb_middle,
+                    'bb_low': bb_low,
+                    'obv': obv,
+                    'obv_sma': obv_sma
+                }
 
                 # Latest values
                 last_close = data['Close'].iloc[-1]
@@ -365,155 +412,458 @@ if scan_button:
         status_text.text("Scan complete!")
         progress_bar.empty()
 
-        # Display results
-        st.header("📊 Scan Results")
+        # Store results in session state
+        st.session_state.scan_results = {
+            'start_date': BACKTEST_START_DATE_STR,
+            'end_date': BACKTEST_END_DATE_STR
+        }
+        st.session_state.all_signals = all_signals
+        st.session_state.backtest_data = backtest_data
 
-        # Create summary table with checkmarks
-        st.subheader("Signal Summary Table")
+# Display results if available
+if st.session_state.all_signals is not None:
+    all_signals = st.session_state.all_signals
+    backtest_data = st.session_state.backtest_data
+    params = st.session_state.indicator_params
 
-        # Get all tickers that have at least one signal
-        tickers_with_signals = set()
+    # Backtesting Visualization Section
+    st.header("📈 Backtesting Visualization")
+
+    # Get tickers that have backtest data
+    available_tickers = list(backtest_data.keys())
+
+    if available_tickers:
+        selected_ticker = st.selectbox(
+            "Select Ticker for Backtesting View",
+            available_tickers,
+            key="backtest_ticker"
+        )
+
+        if selected_ticker and selected_ticker in backtest_data:
+            bt_data = backtest_data[selected_ticker]
+            data = bt_data['data']
+
+            # Create tabs for different indicator groups
+            viz_tab1, viz_tab2, viz_tab3, viz_tab4 = st.tabs([
+                "Price & Moving Averages",
+                "RSI & Stochastic",
+                "MACD",
+                "Bollinger Bands & OBV"
+            ])
+
+            with viz_tab1:
+                st.subheader(f"{selected_ticker} - Price and Moving Averages")
+
+                fig1 = make_subplots(
+                    rows=2, cols=1,
+                    shared_xaxes=True,
+                    vertical_spacing=0.1,
+                    row_heights=[0.7, 0.3],
+                    subplot_titles=(f"Price Action", "Volume")
+                )
+
+                # Price and MAs
+                fig1.add_trace(
+                    go.Candlestick(
+                        x=data.index,
+                        open=data['Open'],
+                        high=data['High'],
+                        low=data['Low'],
+                        close=data['Close'],
+                        name="Price"
+                    ),
+                    row=1, col=1
+                )
+
+                fig1.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['sma_short'],
+                        name=f"SMA {params['sma_short']}",
+                        line=dict(color='blue', width=1)
+                    ),
+                    row=1, col=1
+                )
+
+                fig1.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['sma_long'],
+                        name=f"SMA {params['sma_long']}",
+                        line=dict(color='red', width=1)
+                    ),
+                    row=1, col=1
+                )
+
+                # Volume
+                colors = ['green' if close >= open_ else 'red'
+                          for close, open_ in zip(data['Close'], data['Open'])]
+                fig1.add_trace(
+                    go.Bar(
+                        x=data.index,
+                        y=data['Volume'],
+                        name="Volume",
+                        marker_color=colors
+                    ),
+                    row=2, col=1
+                )
+
+                fig1.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['volume_sma'],
+                        name=f"Volume SMA {params['sma_short']}",
+                        line=dict(color='orange', width=1)
+                    ),
+                    row=2, col=1
+                )
+
+                fig1.update_layout(
+                    height=600,
+                    showlegend=True,
+                    xaxis_rangeslider_visible=False
+                )
+
+                st.plotly_chart(fig1, use_container_width=True)
+
+                # Signal summary for this ticker
+                st.subheader("Active Signals")
+                signals_for_ticker = []
+                for strategy_name, signals in all_signals.items():
+                    for signal in signals:
+                        if signal['Ticker'] == selected_ticker:
+                            signals_for_ticker.append({
+                                'Strategy': strategy_name,
+                                'Buy Price': signal['Buy Price'],
+                                'Sell Price': signal['Sell Price'],
+                                'Stop Loss': signal['Stop Loss']
+                            })
+
+                if signals_for_ticker:
+                    df_ticker_signals = pd.DataFrame(signals_for_ticker)
+                    st.dataframe(df_ticker_signals, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"No active signals for {selected_ticker}")
+
+            with viz_tab2:
+                st.subheader(f"{selected_ticker} - RSI and Stochastic Oscillator")
+
+                fig2 = make_subplots(
+                    rows=2, cols=1,
+                    shared_xaxes=True,
+                    vertical_spacing=0.15,
+                    row_heights=[0.5, 0.5],
+                    subplot_titles=("RSI", "Stochastic Oscillator")
+                )
+
+                # RSI
+                fig2.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['rsi'],
+                        name="RSI",
+                        line=dict(color='purple', width=2)
+                    ),
+                    row=1, col=1
+                )
+
+                # RSI levels
+                fig2.add_hline(
+                    y=70, line_dash="dash", line_color="red",
+                    row=1, col=1
+                )
+                fig2.add_hline(
+                    y=30, line_dash="dash", line_color="green",
+                    row=1, col=1
+                )
+                fig2.add_hline(
+                    y=50, line_dash="dot", line_color="gray",
+                    row=1, col=1
+                )
+
+                # Stochastic
+                fig2.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['stoch_k'],
+                        name="%K",
+                        line=dict(color='blue', width=2)
+                    ),
+                    row=2, col=1
+                )
+
+                fig2.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['stoch_d'],
+                        name="%D",
+                        line=dict(color='red', width=2)
+                    ),
+                    row=2, col=1
+                )
+
+                # Stochastic levels
+                fig2.add_hline(
+                    y=80, line_dash="dash", line_color="red",
+                    row=2, col=1
+                )
+                fig2.add_hline(
+                    y=20, line_dash="dash", line_color="green",
+                    row=2, col=1
+                )
+
+                fig2.update_layout(
+                    height=600,
+                    showlegend=True
+                )
+
+                st.plotly_chart(fig2, use_container_width=True)
+
+            with viz_tab3:
+                st.subheader(f"{selected_ticker} - MACD")
+
+                fig3 = make_subplots(
+                    rows=2, cols=1,
+                    shared_xaxes=True,
+                    vertical_spacing=0.1,
+                    row_heights=[0.7, 0.3],
+                    subplot_titles=(f"Price", "MACD")
+                )
+
+                # Price
+                fig3.add_trace(
+                    go.Candlestick(
+                        x=data.index,
+                        open=data['Open'],
+                        high=data['High'],
+                        low=data['Low'],
+                        close=data['Close'],
+                        name="Price"
+                    ),
+                    row=1, col=1
+                )
+
+                # MACD
+                fig3.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['macd_line'],
+                        name="MACD",
+                        line=dict(color='blue', width=2)
+                    ),
+                    row=2, col=1
+                )
+
+                fig3.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['macd_signal'],
+                        name="Signal",
+                        line=dict(color='red', width=2)
+                    ),
+                    row=2, col=1
+                )
+
+                # MACD Histogram
+                colors_hist = ['green' if val >= 0 else 'red' for val in bt_data['macd_histogram']]
+                fig3.add_trace(
+                    go.Bar(
+                        x=data.index,
+                        y=bt_data['macd_histogram'],
+                        name="Histogram",
+                        marker_color=colors_hist
+                    ),
+                    row=2, col=1
+                )
+
+                fig3.add_hline(y=0, line_dash="solid", line_color="black", row=2, col=1)
+
+                fig3.update_layout(
+                    height=600,
+                    showlegend=True,
+                    xaxis_rangeslider_visible=False
+                )
+
+                st.plotly_chart(fig3, use_container_width=True)
+
+            with viz_tab4:
+                st.subheader(f"{selected_ticker} - Bollinger Bands and OBV")
+
+                fig4 = make_subplots(
+                    rows=2, cols=1,
+                    shared_xaxes=True,
+                    vertical_spacing=0.15,
+                    row_heights=[0.6, 0.4],
+                    subplot_titles=("Bollinger Bands", "On-Balance Volume")
+                )
+
+                # Bollinger Bands
+                fig4.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=data['Close'],
+                        name="Close",
+                        line=dict(color='black', width=2)
+                    ),
+                    row=1, col=1
+                )
+
+                fig4.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['bb_upper'],
+                        name="Upper Band",
+                        line=dict(color='gray', width=1, dash='dash')
+                    ),
+                    row=1, col=1
+                )
+
+                fig4.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['bb_middle'],
+                        name="Middle Band",
+                        line=dict(color='blue', width=1)
+                    ),
+                    row=1, col=1
+                )
+
+                fig4.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['bb_low'],
+                        name="Lower Band",
+                        line=dict(color='gray', width=1, dash='dash'),
+                        fill='tonexty',
+                        fillcolor='rgba(128, 128, 128, 0.1)'
+                    ),
+                    row=1, col=1
+                )
+
+                # OBV
+                fig4.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['obv'],
+                        name="OBV",
+                        line=dict(color='green', width=2)
+                    ),
+                    row=2, col=1
+                )
+
+                fig4.add_trace(
+                    go.Scatter(
+                        x=data.index,
+                        y=bt_data['obv_sma'],
+                        name=f"OBV SMA {params['obv_sma_period']}",
+                        line=dict(color='orange', width=2)
+                    ),
+                    row=2, col=1
+                )
+
+                fig4.update_layout(
+                    height=600,
+                    showlegend=True
+                )
+
+                st.plotly_chart(fig4, use_container_width=True)
+
+    # Summary Table Section
+    st.header("📊 Signal Summary Table")
+
+    # Get all tickers that have at least one signal
+    tickers_with_signals = set()
+    for strategy_name, signals in all_signals.items():
+        for signal in signals:
+            tickers_with_signals.add(signal['Ticker'])
+
+    if tickers_with_signals:
+        # Create summary DataFrame
+        summary_data = []
+        for ticker in sorted(tickers_with_signals):
+            row = {'Ticker': ticker}
+
+            # Check each strategy
+            row['Mean Reversion'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['Mean Reversion']) else ''
+            row['Trend Following'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['Trend Following']) else ''
+            row['MACD'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['MACD Crossover']) else ''
+            row['Stochastic'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['Stochastic Oversold']) else ''
+            row['Bollinger'] = '✅' if any(
+                s['Ticker'] == ticker for s in all_signals['Bollinger Band Reversion']) else ''
+            row['OBV'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['OBV Accumulation']) else ''
+
+            # Count total signals for this ticker
+            total_signals = sum([
+                any(s['Ticker'] == ticker for s in all_signals['Mean Reversion']),
+                any(s['Ticker'] == ticker for s in all_signals['Trend Following']),
+                any(s['Ticker'] == ticker for s in all_signals['MACD Crossover']),
+                any(s['Ticker'] == ticker for s in all_signals['Stochastic Oversold']),
+                any(s['Ticker'] == ticker for s in all_signals['Bollinger Band Reversion']),
+                any(s['Ticker'] == ticker for s in all_signals['OBV Accumulation'])
+            ])
+            row['Total'] = total_signals
+
+            summary_data.append(row)
+
+        df_summary = pd.DataFrame(summary_data)
+        df_summary = df_summary.sort_values('Total', ascending=False)
+
+        # Summary metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Tickers with Signals", len(tickers_with_signals))
+        with col2:
+            total_signals_count = sum(len(signals) for signals in all_signals.values())
+            st.metric("Total Signals", total_signals_count)
+        with col3:
+            avg_signals = total_signals_count / len(tickers_with_signals) if tickers_with_signals else 0
+            st.metric("Avg Signals per Ticker", f"{avg_signals:.1f}")
+
+        # Display summary table
+        st.dataframe(
+            df_summary,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                'Ticker': st.column_config.TextColumn('Ticker', width='medium'),
+                'Mean Reversion': st.column_config.TextColumn('Mean Reversion', width='small'),
+                'Trend Following': st.column_config.TextColumn('Trend Following', width='small'),
+                'MACD': st.column_config.TextColumn('MACD', width='small'),
+                'Stochastic': st.column_config.TextColumn('Stochastic', width='small'),
+                'Bollinger': st.column_config.TextColumn('Bollinger', width='small'),
+                'OBV': st.column_config.TextColumn('OBV', width='small'),
+                'Total': st.column_config.NumberColumn('Total Signals', width='small')
+            }
+        )
+
+        # Detailed view by strategy
+        st.subheader("Detailed View by Strategy")
+
+        strategy_tabs = st.tabs(list(all_signals.keys()))
+
+        for tab, (strategy_name, signals) in zip(strategy_tabs, all_signals.items()):
+            with tab:
+                if signals:
+                    df_strategy = pd.DataFrame(signals)
+                    df_strategy['Signal Date'] = df_strategy['Signal Date'].dt.strftime('%Y-%m-%d')
+                    st.dataframe(df_strategy, use_container_width=True, hide_index=True)
+                    st.caption(f"Total: {len(signals)} signals")
+
+                    # Download button for individual strategy
+                    csv_strategy = df_strategy.to_csv(index=False)
+                    st.download_button(
+                        label=f"📥 Download {strategy_name} Results",
+                        data=csv_strategy,
+                        file_name=f"{strategy_name.lower().replace(' ', '_')}_{st.session_state.scan_results['end_date']}.csv",
+                        mime="text/csv",
+                        key=f"download_{strategy_name}"
+                    )
+                else:
+                    st.info(f"No {strategy_name} signals found")
+
+        # Combined download button
+        st.divider()
+        all_detailed_data = []
         for strategy_name, signals in all_signals.items():
             for signal in signals:
-                tickers_with_signals.add(signal['Ticker'])
-
-        if tickers_with_signals:
-            # Create summary DataFrame
-            summary_data = []
-            for ticker in sorted(tickers_with_signals):
-                row = {'Ticker': ticker}
-
-                # Check each strategy
-                row['Mean Reversion'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['Mean Reversion']) else ''
-                row['Trend Following'] = '✅' if any(
-                    s['Ticker'] == ticker for s in all_signals['Trend Following']) else ''
-                row['MACD'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['MACD Crossover']) else ''
-                row['Stochastic'] = '✅' if any(
-                    s['Ticker'] == ticker for s in all_signals['Stochastic Oversold']) else ''
-                row['Bollinger'] = '✅' if any(
-                    s['Ticker'] == ticker for s in all_signals['Bollinger Band Reversion']) else ''
-                row['OBV'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['OBV Accumulation']) else ''
-
-                # Count total signals for this ticker
-                total_signals = sum([
-                    any(s['Ticker'] == ticker for s in all_signals['Mean Reversion']),
-                    any(s['Ticker'] == ticker for s in all_signals['Trend Following']),
-                    any(s['Ticker'] == ticker for s in all_signals['MACD Crossover']),
-                    any(s['Ticker'] == ticker for s in all_signals['Stochastic Oversold']),
-                    any(s['Ticker'] == ticker for s in all_signals['Bollinger Band Reversion']),
-                    any(s['Ticker'] == ticker for s in all_signals['OBV Accumulation'])
-                ])
-                row['Total'] = total_signals
-
-                summary_data.append(row)
-
-            df_summary = pd.DataFrame(summary_data)
-            df_summary = df_summary.sort_values('Total', ascending=False)
-
-            # Summary metrics
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Tickers with Signals", len(tickers_with_signals))
-            with col2:
-                total_signals_count = sum(len(signals) for signals in all_signals.values())
-                st.metric("Total Signals", total_signals_count)
-            with col3:
-                avg_signals = total_signals_count / len(tickers_with_signals) if tickers_with_signals else 0
-                st.metric("Avg Signals per Ticker", f"{avg_signals:.1f}")
-
-            # Display summary table
-            st.dataframe(
-                df_summary,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'Ticker': st.column_config.TextColumn('Ticker', width='medium'),
-                    'Mean Reversion': st.column_config.TextColumn('Mean Reversion', width='small'),
-                    'Trend Following': st.column_config.TextColumn('Trend Following', width='small'),
-                    'MACD': st.column_config.TextColumn('MACD', width='small'),
-                    'Stochastic': st.column_config.TextColumn('Stochastic', width='small'),
-                    'Bollinger': st.column_config.TextColumn('Bollinger', width='small'),
-                    'OBV': st.column_config.TextColumn('OBV', width='small'),
-                    'Total': st.column_config.NumberColumn('Total Signals', width='small')
-                }
-            )
-
-            # Detailed view by strategy
-            st.subheader("Detailed View by Strategy")
-
-            strategy_tabs = st.tabs(list(all_signals.keys()))
-
-            for tab, (strategy_name, signals) in zip(strategy_tabs, all_signals.items()):
-                with tab:
-                    if signals:
-                        df_strategy = pd.DataFrame(signals)
-                        df_strategy['Signal Date'] = df_strategy['Signal Date'].dt.strftime('%Y-%m-%d')
-                        st.dataframe(df_strategy, use_container_width=True, hide_index=True)
-                        st.caption(f"Total: {len(signals)} signals")
-
-                        # Download button for individual strategy
-                        csv_strategy = df_strategy.to_csv(index=False)
-                        st.download_button(
-                            label=f"📥 Download {strategy_name} Results",
-                            data=csv_strategy,
-                            file_name=f"{strategy_name.lower().replace(' ', '_')}_{BACKTEST_END_DATE_STR}.csv",
-                            mime="text/csv",
-                            key=f"download_{strategy_name}"
-                        )
-                    else:
-                        st.info(f"No {strategy_name} signals found")
-
-            # Combined download button for all detailed data
-            st.divider()
-            all_detailed_data = []
-            for strategy_name, signals in all_signals.items():
-                for signal in signals:
-                    signal_copy = signal.copy()
-                    signal_copy['Strategy'] = strategy_name
-                    signal_copy['Signal Date'] = signal_copy['Signal Date'].strftime('%Y-%m-%d')
-                    all_detailed_data.append(signal_copy)
-
-            if all_detailed_data:
-                df_all_detailed = pd.DataFrame(all_detailed_data)
-                csv_all = df_all_detailed.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download All Detailed Results as CSV",
-                    data=csv_all,
-                    file_name=f"all_signals_detailed_{BACKTEST_END_DATE_STR}.csv",
-                    mime="text/csv"
-                )
-        else:
-            st.info("No signals found for any strategy in the current scan period.")
-
-        # Display current tickers
-        st.divider()
-        st.caption(
-            f"**Active Tickers ({len(st.session_state.tickers)}):** {', '.join(st.session_state.tickers[:10])}{'...' if len(st.session_state.tickers) > 10 else ''}")
-
-else:
-    # Show instructions when no scan has been run
-    st.info("👈 Configure your settings in the sidebar and click 'Run Scan' to start scanning for signals.")
-
-    # Display current configuration summary
-    st.subheader("Current Configuration")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.write("**Tickers:**")
-        st.write(f"Total: {len(st.session_state.tickers)} tickers")
-        st.write("**Indicator Settings:**")
-        params = st.session_state.indicator_params
-        st.write(
-            f"- RSI: Period {params['rsi_period']}, Oversold <{params['rsi_oversold']}, Trend >{params['rsi_trend']}")
-        st.write(f"- Moving Averages: SMA{params['sma_short']} / SMA{params['sma_long']}")
-        st.write(f"- MACD: {params['macd_fast']}/{params['macd_slow']}/{params['macd_signal']}")
-
-    with col2:
-        st.write("&nbsp;")
-        st.write(
-            f"- Stochastic: %K({params['stoch_window']},{params['stoch_smooth']}), Oversold <{params['stoch_oversold']}")
-        st.write(f"- Bollinger Bands: Period {params['bb_window']}, Std {params['bb_std']}")
-        st.write(f"- OBV: SMA{params['obv_sma_period']}")
-        st.write(f"- Backtest: {params['backtest_days']} days")
-        st.write(f"- Risk: TP +{params['take_profit_pct']}%, SL -{params['stop_loss_pct']}%")
+                signal_copy = signal.copy()
