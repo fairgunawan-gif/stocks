@@ -67,7 +67,6 @@ for i in range(months):
     df.loc[i, "Total"] = total
 
 # --- Display ---
-st.subheader("Wealth Growth Table (First 5 and Last 5 Rows)")
 
 # Select first 5 and last 5 rows
 st.subheader("Wealth Growth Table (First 5 and Last 5 Rows)")
