@@ -2,6 +2,24 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+# Try to import centralized formatter. Fallback to local converter if unavailable.
+try:
+    from number_format import format_number
+except Exception:
+    def format_number(value, decimals: int = 2) -> str:
+        if value is None:
+            return ""
+        try:
+            s = f"{float(value):,.{decimals}f}"
+        except Exception:
+            try:
+                s = f"{value:,.{decimals}f}"
+            except Exception:
+                return str(value)
+        # swap: US uses ',' thousands and '.' decimal -> want '.' thousands and ',' decimal
+        s = s.replace(',', '␟').replace('.', ',').replace('␟', '.')
+        return s
+
 st.set_page_config(page_title="Wealth Growth Simulator", layout="wide")
 
 st.title("Wealth Growth Simulator (Money Market + Stocks)")
@@ -88,26 +106,28 @@ df_preview = pd.concat([
 df_preview["Month"] = df_preview["Month"].astype("Int64")
 
 # Display without index
-st.dataframe(
-    df_preview.style.format({
-        "MM_Start": "{:,.2f}",
-        "MM_Interest": "{:,.2f}",
-        "Withdrawal": "{:,.2f}",
-        "MM_End": "{:,.2f}",
-        "Stocks_Start": "{:,.2f}",
-        "Stock_Purchase": "{:,.2f}",
-        "Stocks_Interest": "{:,.2f}",
-        "Stocks_End": "{:,.2f}",
-        "Total": "{:,.2f}",
-    }),
-    hide_index=True
-)
+# Format numeric columns with custom separators ('.' thousands, ',' decimal)
+num_cols = [
+    "MM_Start",
+    "MM_Interest",
+    "Withdrawal",
+    "MM_End",
+    "Stocks_Start",
+    "Stock_Purchase",
+    "Stocks_Interest",
+    "Stocks_End",
+    "Total",
+]
+for col in num_cols:
+    df_preview[col] = df_preview[col].apply(lambda x: format_number(x, decimals=2) if pd.notna(x) else "")
+
+st.dataframe(df_preview, hide_index=True)
 
 st.subheader("Total Wealth Over Time")
 st.line_chart(df.set_index("Month")[["Total", "MM_End", "Stocks_End"]])
 
 st.subheader("Final Values")
 col1, col2, col3 = st.columns(3)
-col1.metric("Final Total Wealth", f"{df['Total'].iloc[-1]:,.2f}")
-col2.metric("Final MM Balance", f"{df['MM_End'].iloc[-1]:,.2f}")
-col3.metric("Final Stocks Value", f"{df['Stocks_End'].iloc[-1]:,.2f}")
+col1.metric("Final Total Wealth", format_number(df['Total'].iloc[-1], decimals=2))
+col2.metric("Final MM Balance", format_number(df['MM_End'].iloc[-1], decimals=2))
+col3.metric("Final Stocks Value", format_number(df['Stocks_End'].iloc[-1], decimals=2))
