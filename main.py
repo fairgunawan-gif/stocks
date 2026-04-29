@@ -18,13 +18,18 @@ st.markdown("Scan stocks for technical analysis signals")
 # Initialize session state for tickers
 if 'tickers' not in st.session_state:
     st.session_state.tickers = [
-        'AALI.JK', 'ARTO.JK', 'ASGR.JK', 'ASII.JK', 'AUTO.JK',
+        'AADI.JK', 'AALI.JK', 'ABMM.JK', 'ADMF.JK', 'ADRO.JK',
+        'ARTO.JK', 'ASGR.JK', 'ASII.JK', 'AUTO.JK', 'BAYU.JK',
         'BBCA.JK', 'BBNI.JK', 'BBRI.JK', 'BBTN.JK', 'BDMN.JK',
-        'BJBR.JK', 'BJTM.JK', 'BMRI.JK', 'BNGA.JK', 'BNLI.JK',
-        'BRIS.JK', 'BTPS.JK', 'BTPN.JK', 'HEAL.JK', 'ICBP.JK',
-        'INDF.JK', 'KLBF.JK', 'MARK.JK', 'MIKA.JK', 'NISP.JK',
-        'OMED.JK', 'PNBN.JK', 'POWR.JK', 'SIDO.JK', 'SMSM.JK',
-        'TLKM.JK', 'TSPC.JK', 'UNTR.JK', 'MLBI.JK', 'DLTA.JK',
+        'BFIN.JK', 'BIRD.JK', 'BJBR.JK', 'BJTM.JK', 'BMRI.JK',
+        'BNGA.JK', 'BNLI.JK', 'BRIS.JK', 'BSDE.JK', 'BSSR.JK',
+        'BTPN.JK', 'BTPS.JK', 'CITA.JK', 'CTRA.JK', 'DLTA.JK',
+        'ELSA.JK', 'HEAL.JK', 'HEXA.JK', 'ICBP.JK', 'INDF.JK',
+        'INKP.JK', 'IPCC.JK', 'ISSP.JK', 'JPFA.JK', 'KLBF.JK',
+        'LSIP.JK', 'MAPI.JK', 'MARK.JK', 'MIKA.JK', 'MLBI.JK',
+        'NISP.JK', 'OMED.JK', 'PNBN.JK', 'POWR.JK', 'SIDO.JK',
+        'SMSM.JK', 'STAA.JK', 'TKIM.JK', 'TLKM.JK', 'TOTO.JK',
+        'TOWR.JK', 'TSPC.JK', 'UNTR.JK', 'UNVR.JK'
     ]
     st.session_state.tickers.sort()
 
