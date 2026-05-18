@@ -774,7 +774,7 @@ if st.session_state.all_signals is not None:
                 st.plotly_chart(fig4, use_container_width=True)
 
     # Summary Table Section
-    st.header("📊 Signal Summary Table")
+    st.header("📊 Signal Summary Table, Goal -> Mean+Bollinger, Trend+Stochastic")
 
     # Get all tickers that have at least one signal
     tickers_with_signals = set()
