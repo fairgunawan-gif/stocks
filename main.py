@@ -22,8 +22,8 @@ if 'tickers' not in st.session_state:
         'BBNI.JK', 'BBRI.JK', 'BIRD.JK', 'BMRI.JK', 'BNGA.JK',
         'BTPS.JK', 'CMRY.JK', 'DLTA.JK', 'GJTL.JK', 'HEAL.JK',
         'ICBP.JK', 'INDF.JK', 'IPCC.JK', 'KLBF.JK', 'MARK.JK',
-        'MIKA.JK', 'NISP.JK', 'OMED.JK', 'POWR.JK', 'SIDO.JK',
-        'SMSM.JK', 'TSPC.JK', 'UNTR.JK'
+        'MIKA.JK', 'NISP.JK', 'OMED.JK', 'POWR.JK', 'RALS.JK',
+        'SIDO.JK', 'SMSM.JK', 'TSPC.JK', 'UNTR.JK'
     ]
     st.session_state.tickers.sort()
 
