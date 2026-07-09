@@ -1,874 +1,3 @@
-# import streamlit as st
-# import yfinance as yf
-# import pandas as pd
-# import ta
-# import plotly.graph_objects as go
-# from plotly.subplots import make_subplots
-#
-# # Page configuration
-# st.set_page_config(
-#     page_title="Stock Signal Scanner",
-#     page_icon="📊",
-#     layout="wide"
-# )
-#
-# st.title("📊 Stock Signal Scanner")
-# st.markdown("Scan stocks for technical analysis signals")
-#
-# # Initialize session state for tickers
-# if 'tickers' not in st.session_state:
-#     st.session_state.tickers = [
-#         'AALI.JK', 'ASGR.JK', 'ASII.JK', 'AUTO.JK', 'BBCA.JK',
-#         'BBNI.JK', 'BBRI.JK', 'BIRD.JK', 'BMRI.JK', 'BNGA.JK',
-#         'BTPS.JK', 'CMRY.JK', 'DLTA.JK', 'GJTL.JK', 'HEAL.JK',
-#         'ICBP.JK', 'INDF.JK', 'IPCC.JK', 'KLBF.JK', 'MARK.JK',
-#         'MIKA.JK', 'NISP.JK', 'OMED.JK', 'POWR.JK', 'RALS.JK',
-#         'SIDO.JK', 'SMSM.JK', 'TSPC.JK', 'UNTR.JK'
-#     ]
-#     st.session_state.tickers.sort()
-#
-# # Initialize session state for indicator parameters
-# if 'indicator_params' not in st.session_state:
-#     st.session_state.indicator_params = {
-#         'rsi_period': 14,
-#         'rsi_oversold': 30,
-#         'rsi_trend': 50,
-#         'sma_short': 20,
-#         'sma_long': 50,
-#         'macd_fast': 12,
-#         'macd_slow': 26,
-#         'macd_signal': 9,
-#         'stoch_window': 14,
-#         'stoch_smooth': 3,
-#         'stoch_oversold': 20,
-#         'bb_window': 20,
-#         'bb_std': 2,
-#         'obv_sma_period': 10,
-#         'backtest_days': 120,
-#         'take_profit_pct': 3.0,
-#         'stop_loss_pct': 2.0
-#     }
-#
-# # Initialize session state for scan results
-# if 'scan_results' not in st.session_state:
-#     st.session_state.scan_results = None
-# if 'all_signals' not in st.session_state:
-#     st.session_state.all_signals = None
-# if 'backtest_data' not in st.session_state:
-#     st.session_state.backtest_data = {}
-#
-# # Sidebar for configuration
-# with st.sidebar:
-#     st.header("⚙️ Configuration")
-#
-#     # Ticker Management
-#     st.subheader("📋 Ticker Management")
-#
-#     # Add new ticker
-#     col1, col2 = st.columns([3, 1])
-#     with col1:
-#         new_ticker = st.text_input("Add new ticker", placeholder="e.g., GOTO.JK", key="new_ticker")
-#     with col2:
-#         if st.button("Add", use_container_width=True):
-#             if new_ticker and new_ticker.upper() not in st.session_state.tickers:
-#                 st.session_state.tickers.append(new_ticker.upper())
-#                 st.session_state.tickers.sort()
-#                 st.rerun()
-#             elif new_ticker:
-#                 st.warning("Ticker already exists!")
-#
-#     # Edit ticker
-#     ticker_to_edit = st.selectbox("Select ticker to edit", st.session_state.tickers, key="edit_select")
-#     edited_ticker = st.text_input("Edit ticker", value=ticker_to_edit if ticker_to_edit else "", key="edit_ticker")
-#     col1, col2 = st.columns(2)
-#     with col1:
-#         if st.button("Update", use_container_width=True):
-#             if edited_ticker and edited_ticker != ticker_to_edit:
-#                 idx = st.session_state.tickers.index(ticker_to_edit)
-#                 st.session_state.tickers[idx] = edited_ticker.upper()
-#                 st.session_state.tickers.sort()
-#                 st.rerun()
-#     with col2:
-#         if st.button("Delete", use_container_width=True):
-#             if ticker_to_edit in st.session_state.tickers:
-#                 st.session_state.tickers.remove(ticker_to_edit)
-#                 st.rerun()
-#
-#     st.divider()
-#
-#     # Indicator Parameters
-#     st.subheader("📊 Indicator Parameters")
-#
-#     with st.expander("RSI Settings", expanded=False):
-#         st.session_state.indicator_params['rsi_period'] = st.number_input(
-#             "RSI Period", min_value=2, max_value=50,
-#             value=st.session_state.indicator_params['rsi_period']
-#         )
-#         st.session_state.indicator_params['rsi_oversold'] = st.slider(
-#             "RSI Oversold Threshold", min_value=10, max_value=40,
-#             value=st.session_state.indicator_params['rsi_oversold']
-#         )
-#         st.session_state.indicator_params['rsi_trend'] = st.slider(
-#             "RSI Trend Threshold", min_value=40, max_value=70,
-#             value=st.session_state.indicator_params['rsi_trend']
-#         )
-#
-#     with st.expander("Moving Averages", expanded=False):
-#         st.session_state.indicator_params['sma_short'] = st.number_input(
-#             "Short SMA Period", min_value=5, max_value=50,
-#             value=st.session_state.indicator_params['sma_short']
-#         )
-#         st.session_state.indicator_params['sma_long'] = st.number_input(
-#             "Long SMA Period", min_value=20, max_value=200,
-#             value=st.session_state.indicator_params['sma_long']
-#         )
-#
-#     with st.expander("MACD Settings", expanded=False):
-#         st.session_state.indicator_params['macd_fast'] = st.number_input(
-#             "MACD Fast", min_value=5, max_value=20,
-#             value=st.session_state.indicator_params['macd_fast']
-#         )
-#         st.session_state.indicator_params['macd_slow'] = st.number_input(
-#             "MACD Slow", min_value=15, max_value=40,
-#             value=st.session_state.indicator_params['macd_slow']
-#         )
-#         st.session_state.indicator_params['macd_signal'] = st.number_input(
-#             "MACD Signal", min_value=5, max_value=15,
-#             value=st.session_state.indicator_params['macd_signal']
-#         )
-#
-#     with st.expander("Stochastic Settings", expanded=False):
-#         st.session_state.indicator_params['stoch_window'] = st.number_input(
-#             "Stochastic %K Period", min_value=5, max_value=30,
-#             value=st.session_state.indicator_params['stoch_window']
-#         )
-#         st.session_state.indicator_params['stoch_smooth'] = st.number_input(
-#             "Stochastic %K Smooth", min_value=2, max_value=5,
-#             value=st.session_state.indicator_params['stoch_smooth']
-#         )
-#         st.session_state.indicator_params['stoch_oversold'] = st.slider(
-#             "Stochastic Oversold", min_value=10, max_value=30,
-#             value=st.session_state.indicator_params['stoch_oversold']
-#         )
-#
-#     with st.expander("Bollinger Bands", expanded=False):
-#         st.session_state.indicator_params['bb_window'] = st.number_input(
-#             "BB Period", min_value=10, max_value=50,
-#             value=st.session_state.indicator_params['bb_window']
-#         )
-#         st.session_state.indicator_params['bb_std'] = st.slider(
-#             "BB Standard Deviations", min_value=1.0, max_value=3.0, step=0.5,
-#             value=float(st.session_state.indicator_params['bb_std'])
-#         )
-#
-#     with st.expander("OBV Settings", expanded=False):
-#         st.session_state.indicator_params['obv_sma_period'] = st.number_input(
-#             "OBV SMA Period", min_value=5, max_value=30,
-#             value=st.session_state.indicator_params['obv_sma_period']
-#         )
-#
-#     with st.expander("Backtest & Risk Settings", expanded=False):
-#         st.session_state.indicator_params['backtest_days'] = st.number_input(
-#             "Backtest Period (days)", min_value=30, max_value=365,
-#             value=st.session_state.indicator_params['backtest_days']
-#         )
-#         st.session_state.indicator_params['take_profit_pct'] = st.slider(
-#             "Take Profit %", min_value=1.0, max_value=10.0, step=0.5,
-#             value=float(st.session_state.indicator_params['take_profit_pct'])
-#         )
-#         st.session_state.indicator_params['stop_loss_pct'] = st.slider(
-#             "Stop Loss %", min_value=1.0, max_value=10.0, step=0.5,
-#             value=float(st.session_state.indicator_params['stop_loss_pct'])
-#         )
-#
-#     # Scan button
-#     st.divider()
-#     scan_button = st.button("🔍 Run Scan", type="primary", use_container_width=True)
-#
-# # Main content area
-# if scan_button:
-#     with st.spinner("Scanning stocks for signals..."):
-#         # Get parameters from session state
-#         params = st.session_state.indicator_params
-#
-#         # Define the historical backtesting period
-#         BACKTEST_END_DATE = pd.Timestamp.now() - pd.Timedelta(days=1)
-#         BACKTEST_START_DATE = BACKTEST_END_DATE - pd.Timedelta(days=params['backtest_days'])
-#         BACKTEST_END_DATE_STR = BACKTEST_END_DATE.strftime('%Y-%m-%d')
-#         BACKTEST_START_DATE_STR = BACKTEST_START_DATE.strftime('%Y-%m-%d')
-#
-#         # Signal containers
-#         all_signals = {
-#             'Mean Reversion': [],
-#             'Trend Following': [],
-#             'MACD Crossover': [],
-#             'Stochastic Oversold': [],
-#             'Bollinger Band Reversion': [],
-#             'OBV Accumulation': []
-#         }
-#
-#         # Store backtest data for each ticker
-#         backtest_data = {}
-#
-#         progress_bar = st.progress(0)
-#         status_text = st.empty()
-#
-#         for idx, ticker in enumerate(st.session_state.tickers):
-#             try:
-#                 status_text.text(f"Processing {ticker}... ({idx + 1}/{len(st.session_state.tickers)})")
-#
-#                 # Fetch data
-#                 data = yf.Ticker(ticker).history(start=BACKTEST_START_DATE_STR, end=BACKTEST_END_DATE_STR)
-#
-#                 if data.index.tz is not None:
-#                     data.index = data.index.tz_convert(None)
-#
-#                 min_periods = max(params['sma_long'], params['macd_slow'])
-#                 if data.empty or len(data) < min_periods:
-#                     continue
-#
-#                 # Calculate indicators
-#                 rsi = ta.momentum.rsi(data['Close'], window=params['rsi_period'])
-#                 sma_short = data['Close'].rolling(window=params['sma_short']).mean()
-#                 sma_long = data['Close'].rolling(window=params['sma_long']).mean()
-#                 volume_sma = data['Volume'].rolling(window=params['sma_short']).mean()
-#
-#                 # MACD calculation
-#                 macd_line = ta.trend.macd(
-#                     data['Close'],
-#                     window_slow=params['macd_slow'],
-#                     window_fast=params['macd_fast']
-#                 )
-#                 macd_signal_line = ta.trend.macd_signal(
-#                     data['Close'],
-#                     window_slow=params['macd_slow'],
-#                     window_fast=params['macd_fast'],
-#                     window_sign=params['macd_signal']
-#                 )
-#                 macd_histogram = ta.trend.macd_diff(
-#                     data['Close'],
-#                     window_slow=params['macd_slow'],
-#                     window_fast=params['macd_fast'],
-#                     window_sign=params['macd_signal']
-#                 )
-#
-#                 stoch_k = ta.momentum.stoch(
-#                     data['High'], data['Low'], data['Close'],
-#                     window=params['stoch_window'],
-#                     smooth_window=params['stoch_smooth']
-#                 )
-#                 stoch_d = ta.momentum.stoch_signal(
-#                     data['High'], data['Low'], data['Close'],
-#                     window=params['stoch_window'],
-#                     smooth_window=params['stoch_smooth']
-#                 )
-#
-#                 bb_upper = ta.volatility.bollinger_hband(
-#                     data['Close'],
-#                     window=params['bb_window'],
-#                     window_dev=params['bb_std']
-#                 )
-#                 bb_middle = ta.volatility.bollinger_mavg(
-#                     data['Close'],
-#                     window=params['bb_window']
-#                 )
-#                 bb_low = ta.volatility.bollinger_lband(
-#                     data['Close'],
-#                     window=params['bb_window'],
-#                     window_dev=params['bb_std']
-#                 )
-#
-#                 obv = ta.volume.on_balance_volume(data['Close'], data['Volume'])
-#                 obv_sma = obv.rolling(window=params['obv_sma_period']).mean()
-#
-#                 # Store backtest data
-#                 backtest_data[ticker] = {
-#                     'data': data,
-#                     'rsi': rsi,
-#                     'sma_short': sma_short,
-#                     'sma_long': sma_long,
-#                     'volume_sma': volume_sma,
-#                     'macd_line': macd_line,
-#                     'macd_signal': macd_signal_line,
-#                     'macd_histogram': macd_histogram,
-#                     'stoch_k': stoch_k,
-#                     'stoch_d': stoch_d,
-#                     'bb_upper': bb_upper,
-#                     'bb_middle': bb_middle,
-#                     'bb_low': bb_low,
-#                     'obv': obv,
-#                     'obv_sma': obv_sma
-#                 }
-#
-#                 # Latest values
-#                 last_close = data['Close'].iloc[-1]
-#                 last_rsi = rsi.iloc[-1]
-#                 last_sma_short = sma_short.iloc[-1]
-#                 last_sma_long = sma_long.iloc[-1]
-#                 last_volume = data['Volume'].iloc[-1]
-#                 last_volume_sma = volume_sma.iloc[-1]
-#                 last_macd = macd_line.iloc[-1]
-#                 last_macd_signal = macd_signal_line.iloc[-1]
-#                 last_stoch_k = stoch_k.iloc[-1]
-#                 last_stoch_d = stoch_d.iloc[-1]
-#                 last_bb_low = bb_low.iloc[-1]
-#                 last_obv = obv.iloc[-1]
-#                 last_obv_sma = obv_sma.iloc[-1]
-#
-#                 take_profit_multiplier = 1 + (params['take_profit_pct'] / 100)
-#                 stop_loss_multiplier = 1 - (params['stop_loss_pct'] / 100)
-#
-#                 signal_date = pd.to_datetime(BACKTEST_END_DATE_STR)
-#
-#                 # Strategy checks
-#                 # Mean Reversion
-#                 if (not pd.isna(last_rsi) and not pd.isna(last_close) and not pd.isna(last_sma_short) and
-#                         last_rsi < params[
-#                             'rsi_oversold'] and last_close < last_sma_short and last_volume > last_volume_sma):
-#                     all_signals['Mean Reversion'].append({
-#                         'Ticker': ticker,
-#                         'Buy Price': round(last_close, 2),
-#                         'Sell Price': round(last_close * take_profit_multiplier, 2),
-#                         'Stop Loss': round(last_close * stop_loss_multiplier, 2),
-#                         'RSI': round(last_rsi, 2),
-#                         f'SMA{params["sma_short"]}': round(last_sma_short, 2),
-#                         'Volume Ratio': round(last_volume / last_volume_sma, 2) if last_volume_sma != 0 else 0,
-#                         'Signal Date': signal_date
-#                     })
-#
-#                 # Trend Following
-#                 if (not pd.isna(last_rsi) and not pd.isna(last_close) and not pd.isna(last_sma_short) and not pd.isna(
-#                         last_sma_long) and
-#                         last_rsi > params[
-#                             'rsi_trend'] and last_close > last_sma_short and last_sma_short > last_sma_long and last_volume > last_volume_sma):
-#                     all_signals['Trend Following'].append({
-#                         'Ticker': ticker,
-#                         'Buy Price': round(last_close, 2),
-#                         'Sell Price': round(last_close * take_profit_multiplier, 2),
-#                         'Stop Loss': round(last_close * stop_loss_multiplier, 2),
-#                         'RSI': round(last_rsi, 2),
-#                         f'SMA{params["sma_short"]}': round(last_sma_short, 2),
-#                         f'SMA{params["sma_long"]}': round(last_sma_long, 2),
-#                         'Signal Date': signal_date
-#                     })
-#
-#                 # MACD
-#                 if (not pd.isna(last_macd) and not pd.isna(last_macd_signal) and
-#                         last_macd > last_macd_signal and last_macd < 0):
-#                     all_signals['MACD Crossover'].append({
-#                         'Ticker': ticker,
-#                         'Buy Price': round(last_close, 2),
-#                         'Sell Price': round(last_close * take_profit_multiplier, 2),
-#                         'Stop Loss': round(last_close * stop_loss_multiplier, 2),
-#                         'MACD': round(last_macd, 2),
-#                         'MACD Signal': round(last_macd_signal, 2),
-#                         'Signal Date': signal_date
-#                     })
-#
-#                 # Stochastic
-#                 if (not pd.isna(last_stoch_k) and not pd.isna(last_stoch_d) and
-#                         last_stoch_k > last_stoch_d and last_stoch_k < params['stoch_oversold']):
-#                     all_signals['Stochastic Oversold'].append({
-#                         'Ticker': ticker,
-#                         'Buy Price': round(last_close, 2),
-#                         'Sell Price': round(last_close * take_profit_multiplier, 2),
-#                         'Stop Loss': round(last_close * stop_loss_multiplier, 2),
-#                         'Stoch %K': round(last_stoch_k, 2),
-#                         'Stoch %D': round(last_stoch_d, 2),
-#                         'Signal Date': signal_date
-#                     })
-#
-#                 # Bollinger Bands
-#                 if not pd.isna(last_bb_low) and last_close < last_bb_low:
-#                     all_signals['Bollinger Band Reversion'].append({
-#                         'Ticker': ticker,
-#                         'Buy Price': round(last_close, 2),
-#                         'Sell Price': round(last_close * take_profit_multiplier, 2),
-#                         'Stop Loss': round(last_close * stop_loss_multiplier, 2),
-#                         'Close': round(last_close, 2),
-#                         'BB Lower': round(last_bb_low, 2),
-#                         'Signal Date': signal_date
-#                     })
-#
-#                 # OBV
-#                 if (not pd.isna(last_obv) and not pd.isna(last_obv_sma) and
-#                         last_obv > last_obv_sma):
-#                     all_signals['OBV Accumulation'].append({
-#                         'Ticker': ticker,
-#                         'Buy Price': round(last_close, 2),
-#                         'Sell Price': round(last_close * take_profit_multiplier, 2),
-#                         'Stop Loss': round(last_close * stop_loss_multiplier, 2),
-#                         'OBV': round(last_obv, 2),
-#                         f'OBV SMA{params["obv_sma_period"]}': round(last_obv_sma, 2),
-#                         'Signal Date': signal_date
-#                     })
-#
-#                 progress_bar.progress((idx + 1) / len(st.session_state.tickers))
-#
-#             except Exception as e:
-#                 st.error(f"Error processing {ticker}: {e}")
-#
-#         status_text.text("Scan complete!")
-#         progress_bar.empty()
-#
-#         # Store results in session state
-#         st.session_state.scan_results = {
-#             'start_date': BACKTEST_START_DATE_STR,
-#             'end_date': BACKTEST_END_DATE_STR
-#         }
-#         st.session_state.all_signals = all_signals
-#         st.session_state.backtest_data = backtest_data
-#
-# # Display results if available
-# if st.session_state.all_signals is not None:
-#     all_signals = st.session_state.all_signals
-#     backtest_data = st.session_state.backtest_data
-#     params = st.session_state.indicator_params
-#
-#     # Backtesting Visualization Section
-#     st.header("📈 Backtesting Visualization")
-#
-#     # Get tickers that have backtest data
-#     available_tickers = list(backtest_data.keys())
-#
-#     if available_tickers:
-#         selected_ticker = st.selectbox(
-#             "Select Ticker for Backtesting View",
-#             available_tickers,
-#             key="backtest_ticker"
-#         )
-#
-#         if selected_ticker and selected_ticker in backtest_data:
-#             bt_data = backtest_data[selected_ticker]
-#             data = bt_data['data']
-#
-#             # Create tabs for different indicator groups
-#             viz_tab1, viz_tab2, viz_tab3, viz_tab4 = st.tabs([
-#                 "Price & Moving Averages",
-#                 "RSI & Stochastic",
-#                 "MACD",
-#                 "Bollinger Bands & OBV"
-#             ])
-#
-#             with viz_tab1:
-#                 st.subheader(f"{selected_ticker} - Price and Moving Averages")
-#
-#                 fig1 = make_subplots(
-#                     rows=2, cols=1,
-#                     shared_xaxes=True,
-#                     vertical_spacing=0.1,
-#                     row_heights=[0.7, 0.3],
-#                     subplot_titles=(f"Price Action", "Volume")
-#                 )
-#
-#                 # Price and MAs
-#                 fig1.add_trace(
-#                     go.Candlestick(
-#                         x=data.index,
-#                         open=data['Open'],
-#                         high=data['High'],
-#                         low=data['Low'],
-#                         close=data['Close'],
-#                         name="Price"
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 fig1.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['sma_short'],
-#                         name=f"SMA {params['sma_short']}",
-#                         line=dict(color='blue', width=1)
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 fig1.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['sma_long'],
-#                         name=f"SMA {params['sma_long']}",
-#                         line=dict(color='red', width=1)
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 # Volume
-#                 colors = ['green' if close >= open_ else 'red'
-#                           for close, open_ in zip(data['Close'], data['Open'])]
-#                 fig1.add_trace(
-#                     go.Bar(
-#                         x=data.index,
-#                         y=data['Volume'],
-#                         name="Volume",
-#                         marker_color=colors
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 fig1.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['volume_sma'],
-#                         name=f"Volume SMA {params['sma_short']}",
-#                         line=dict(color='orange', width=1)
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 fig1.update_layout(
-#                     height=600,
-#                     showlegend=True,
-#                     xaxis_rangeslider_visible=False
-#                 )
-#
-#                 st.plotly_chart(fig1, use_container_width=True)
-#
-#                 # Signal summary for this ticker
-#                 st.subheader("Active Signals")
-#                 signals_for_ticker = []
-#                 for strategy_name, signals in all_signals.items():
-#                     for signal in signals:
-#                         if signal['Ticker'] == selected_ticker:
-#                             signals_for_ticker.append({
-#                                 'Strategy': strategy_name,
-#                                 'Buy Price': signal['Buy Price'],
-#                                 'Sell Price': signal['Sell Price'],
-#                                 'Stop Loss': signal['Stop Loss']
-#                             })
-#
-#                 if signals_for_ticker:
-#                     df_ticker_signals = pd.DataFrame(signals_for_ticker)
-#                     st.dataframe(df_ticker_signals, use_container_width=True, hide_index=True)
-#                 else:
-#                     st.info(f"No active signals for {selected_ticker}")
-#
-#             with viz_tab2:
-#                 st.subheader(f"{selected_ticker} - RSI and Stochastic Oscillator")
-#
-#                 fig2 = make_subplots(
-#                     rows=2, cols=1,
-#                     shared_xaxes=True,
-#                     vertical_spacing=0.15,
-#                     row_heights=[0.5, 0.5],
-#                     subplot_titles=("RSI", "Stochastic Oscillator")
-#                 )
-#
-#                 # RSI
-#                 fig2.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['rsi'],
-#                         name="RSI",
-#                         line=dict(color='purple', width=2)
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 # RSI levels
-#                 fig2.add_hline(
-#                     y=70, line_dash="dash", line_color="red",
-#                     row=1, col=1
-#                 )
-#                 fig2.add_hline(
-#                     y=30, line_dash="dash", line_color="green",
-#                     row=1, col=1
-#                 )
-#                 fig2.add_hline(
-#                     y=50, line_dash="dot", line_color="gray",
-#                     row=1, col=1
-#                 )
-#
-#                 # Stochastic
-#                 fig2.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['stoch_k'],
-#                         name="%K",
-#                         line=dict(color='blue', width=2)
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 fig2.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['stoch_d'],
-#                         name="%D",
-#                         line=dict(color='red', width=2)
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 # Stochastic levels
-#                 fig2.add_hline(
-#                     y=80, line_dash="dash", line_color="red",
-#                     row=2, col=1
-#                 )
-#                 fig2.add_hline(
-#                     y=20, line_dash="dash", line_color="green",
-#                     row=2, col=1
-#                 )
-#
-#                 fig2.update_layout(
-#                     height=600,
-#                     showlegend=True
-#                 )
-#
-#                 st.plotly_chart(fig2, use_container_width=True)
-#
-#             with viz_tab3:
-#                 st.subheader(f"{selected_ticker} - MACD")
-#
-#                 fig3 = make_subplots(
-#                     rows=2, cols=1,
-#                     shared_xaxes=True,
-#                     vertical_spacing=0.1,
-#                     row_heights=[0.7, 0.3],
-#                     subplot_titles=(f"Price", "MACD")
-#                 )
-#
-#                 # Price
-#                 fig3.add_trace(
-#                     go.Candlestick(
-#                         x=data.index,
-#                         open=data['Open'],
-#                         high=data['High'],
-#                         low=data['Low'],
-#                         close=data['Close'],
-#                         name="Price"
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 # MACD
-#                 fig3.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['macd_line'],
-#                         name="MACD",
-#                         line=dict(color='blue', width=2)
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 fig3.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['macd_signal'],
-#                         name="Signal",
-#                         line=dict(color='red', width=2)
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 # MACD Histogram
-#                 colors_hist = ['green' if val >= 0 else 'red' for val in bt_data['macd_histogram']]
-#                 fig3.add_trace(
-#                     go.Bar(
-#                         x=data.index,
-#                         y=bt_data['macd_histogram'],
-#                         name="Histogram",
-#                         marker_color=colors_hist
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 fig3.add_hline(y=0, line_dash="solid", line_color="black", row=2, col=1)
-#
-#                 fig3.update_layout(
-#                     height=600,
-#                     showlegend=True,
-#                     xaxis_rangeslider_visible=False
-#                 )
-#
-#                 st.plotly_chart(fig3, use_container_width=True)
-#
-#             with viz_tab4:
-#                 st.subheader(f"{selected_ticker} - Bollinger Bands and OBV")
-#
-#                 fig4 = make_subplots(
-#                     rows=2, cols=1,
-#                     shared_xaxes=True,
-#                     vertical_spacing=0.15,
-#                     row_heights=[0.6, 0.4],
-#                     subplot_titles=("Bollinger Bands", "On-Balance Volume")
-#                 )
-#
-#                 # Bollinger Bands
-#                 fig4.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=data['Close'],
-#                         name="Close",
-#                         line=dict(color='black', width=2)
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 fig4.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['bb_upper'],
-#                         name="Upper Band",
-#                         line=dict(color='gray', width=1, dash='dash')
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 fig4.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['bb_middle'],
-#                         name="Middle Band",
-#                         line=dict(color='blue', width=1)
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 fig4.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['bb_low'],
-#                         name="Lower Band",
-#                         line=dict(color='gray', width=1, dash='dash'),
-#                         fill='tonexty',
-#                         fillcolor='rgba(128, 128, 128, 0.1)'
-#                     ),
-#                     row=1, col=1
-#                 )
-#
-#                 # OBV
-#                 fig4.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['obv'],
-#                         name="OBV",
-#                         line=dict(color='green', width=2)
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 fig4.add_trace(
-#                     go.Scatter(
-#                         x=data.index,
-#                         y=bt_data['obv_sma'],
-#                         name=f"OBV SMA {params['obv_sma_period']}",
-#                         line=dict(color='orange', width=2)
-#                     ),
-#                     row=2, col=1
-#                 )
-#
-#                 fig4.update_layout(
-#                     height=600,
-#                     showlegend=True
-#                 )
-#
-#                 st.plotly_chart(fig4, use_container_width=True)
-#
-#     # Summary Table Section
-#     st.header("📊 Signal Summary Table, Goal -> Mean+Bollinger, Trend+Stochastic")
-#
-#     # Get all tickers that have at least one signal
-#     tickers_with_signals = set()
-#     for strategy_name, signals in all_signals.items():
-#         for signal in signals:
-#             tickers_with_signals.add(signal['Ticker'])
-#
-#     if tickers_with_signals:
-#         # Create summary DataFrame
-#         summary_data = []
-#         for ticker in sorted(tickers_with_signals):
-#             row = {'Ticker': ticker}
-#
-#             # Check each strategy
-#             row['Mean Reversion'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['Mean Reversion']) else ''
-#             row['Trend Following'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['Trend Following']) else ''
-#             row['MACD'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['MACD Crossover']) else ''
-#             row['Stochastic'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['Stochastic Oversold']) else ''
-#             row['Bollinger'] = '✅' if any(
-#                 s['Ticker'] == ticker for s in all_signals['Bollinger Band Reversion']) else ''
-#             row['OBV'] = '✅' if any(s['Ticker'] == ticker for s in all_signals['OBV Accumulation']) else ''
-#
-#             # Count total signals for this ticker
-#             total_signals = sum([
-#                 any(s['Ticker'] == ticker for s in all_signals['Mean Reversion']),
-#                 any(s['Ticker'] == ticker for s in all_signals['Trend Following']),
-#                 any(s['Ticker'] == ticker for s in all_signals['MACD Crossover']),
-#                 any(s['Ticker'] == ticker for s in all_signals['Stochastic Oversold']),
-#                 any(s['Ticker'] == ticker for s in all_signals['Bollinger Band Reversion']),
-#                 any(s['Ticker'] == ticker for s in all_signals['OBV Accumulation'])
-#             ])
-#             row['Total'] = total_signals
-#
-#             summary_data.append(row)
-#
-#         df_summary = pd.DataFrame(summary_data)
-#         df_summary = df_summary.sort_values('Total', ascending=False)
-#
-#         # Summary metrics
-#         col1, col2, col3 = st.columns(3)
-#         with col1:
-#             st.metric("Tickers with Signals", len(tickers_with_signals))
-#         with col2:
-#             total_signals_count = sum(len(signals) for signals in all_signals.values())
-#             st.metric("Total Signals", total_signals_count)
-#         with col3:
-#             avg_signals = total_signals_count / len(tickers_with_signals) if tickers_with_signals else 0
-#             st.metric("Avg Signals per Ticker", f"{avg_signals:.1f}")
-#
-#         # Display summary table
-#         st.dataframe(
-#             df_summary,
-#             use_container_width=True,
-#             hide_index=True,
-#             column_config={
-#                 'Ticker': st.column_config.TextColumn('Ticker', width='medium'),
-#                 'Mean Reversion': st.column_config.TextColumn('Mean Reversion', width='small'),
-#                 'Trend Following': st.column_config.TextColumn('Trend Following', width='small'),
-#                 'MACD': st.column_config.TextColumn('MACD', width='small'),
-#                 'Stochastic': st.column_config.TextColumn('Stochastic', width='small'),
-#                 'Bollinger': st.column_config.TextColumn('Bollinger', width='small'),
-#                 'OBV': st.column_config.TextColumn('OBV', width='small'),
-#                 'Total': st.column_config.NumberColumn('Total Signals', width='small')
-#             }
-#         )
-#
-#         # Detailed view by strategy
-#         st.subheader("Detailed View by Strategy")
-#
-#         strategy_tabs = st.tabs(list(all_signals.keys()))
-#
-#         for tab, (strategy_name, signals) in zip(strategy_tabs, all_signals.items()):
-#             with tab:
-#                 if signals:
-#                     df_strategy = pd.DataFrame(signals)
-#                     df_strategy['Signal Date'] = df_strategy['Signal Date'].dt.strftime('%Y-%m-%d')
-#                     st.dataframe(df_strategy, use_container_width=True, hide_index=True)
-#                     st.caption(f"Total: {len(signals)} signals")
-#
-#                     # Download button for individual strategy
-#                     csv_strategy = df_strategy.to_csv(index=False)
-#                     st.download_button(
-#                         label=f"📥 Download {strategy_name} Results",
-#                         data=csv_strategy,
-#                         file_name=f"{strategy_name.lower().replace(' ', '_')}_{st.session_state.scan_results['end_date']}.csv",
-#                         mime="text/csv",
-#                         key=f"download_{strategy_name}"
-#                     )
-#                 else:
-#                     st.info(f"No {strategy_name} signals found")
-#
-#         # Combined download button
-#         st.divider()
-#         all_detailed_data = []
-#         for strategy_name, signals in all_signals.items():
-#             for signal in signals:
-#                 signal_copy = signal.copy()
-
-# *****************************************************************************************************************
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -886,17 +15,24 @@ st.set_page_config(
 )
 
 st.title("📊 Enhanced Stock Signal Scanner")
-st.markdown("Advanced Technical Analysis with Dynamic Risk Management")
+st.markdown("Advanced Technical Analysis with Dynamic Risk Management - BUY & SELL Signals")
 
 # Initialize session state
 if 'tickers' not in st.session_state:
     st.session_state.tickers = [
-        'AALI.JK', 'ASGR.JK', 'ASII.JK', 'AUTO.JK', 'BBCA.JK',
-        'BBNI.JK', 'BBRI.JK', 'BIRD.JK', 'BMRI.JK', 'BNGA.JK',
-        'BTPS.JK', 'CMRY.JK', 'DLTA.JK', 'GJTL.JK', 'HEAL.JK',
-        'ICBP.JK', 'INDF.JK', 'IPCC.JK', 'KLBF.JK', 'MARK.JK',
-        'MIKA.JK', 'NISP.JK', 'OMED.JK', 'POWR.JK', 'RALS.JK',
-        'SIDO.JK', 'SMSM.JK', 'TSPC.JK', 'UNTR.JK', 'CFIN.JK'
+        'AADI.JK', 'AALI.JK', 'ACES.JK', 'ADMR.JK', 'ADRO.JK',
+        'AKRA.JK', 'AMMN.JK', 'AMRT.JK', 'ANTM.JK', 'ASGR.JK',
+        'ASII.JK', 'AUTO.JK', 'BBCA.JK', 'BBNI.JK', 'BBRI.JK',
+        'BBTN.JK', 'BIRD.JK', 'BMRI.JK', 'BNGA.JK', 'BTPS.JK',
+        'CFIN.JK', 'CMRY.JK', 'CPIN.JK', 'DLTA.JK', 'EMTK.JK',
+        'ESSA.JK', 'GJTL.JK', 'HEAL.JK', 'HRTA.JK', 'ICBP.JK',
+        'INCO.JK', 'INDF.JK', 'INKP.JK', 'IPCC.JK', 'ISAT.JK',
+        'ITMG.JK', 'JPFA.JK', 'KLBF.JK', 'MAPI.JK', 'MARK.JK',
+        'MBMA.JK', 'MDKA.JK', 'MEDC.JK', 'MIKA.JK', 'NISP.JK',
+        'OMED.JK', 'PGAS.JK', 'PGEO.JK', 'POWR.JK', 'PTBA.JK',
+        'RALS.JK', 'SCMA.JK', 'SIDO.JK', 'SMSM.JK', 'SPTO.JK',
+        'TLKM.JK', 'TOTO.JK', 'TOWR.JK', 'TSPC.JK', 'UNTR.JK',
+        'UNVR.JK'
     ]
     st.session_state.tickers.sort()
 
@@ -904,6 +40,7 @@ if 'indicator_params' not in st.session_state:
     st.session_state.indicator_params = {
         'rsi_period': 14,
         'rsi_oversold': 30,
+        'rsi_overbought': 70,
         'rsi_trend': 50,
         'sma_short': 20,
         'sma_long': 50,
@@ -913,6 +50,7 @@ if 'indicator_params' not in st.session_state:
         'stoch_window': 14,
         'stoch_smooth': 3,
         'stoch_oversold': 20,
+        'stoch_overbought': 80,
         'bb_window': 20,
         'bb_std': 2.0,
         'obv_sma_period': 10,
@@ -927,10 +65,20 @@ if 'indicator_params' not in st.session_state:
 
 if 'scan_results' not in st.session_state:
     st.session_state.scan_results = None
-if 'all_signals' not in st.session_state:
-    st.session_state.all_signals = None
+if 'buy_signals' not in st.session_state:
+    st.session_state.buy_signals = None
+if 'sell_signals' not in st.session_state:
+    st.session_state.sell_signals = None
 if 'backtest_data' not in st.session_state:
     st.session_state.backtest_data = {}
+
+# ============================================================
+# TOP LEFT: Scan Button
+# ============================================================
+col_scan, col_empty = st.columns([1, 3])
+with col_scan:
+    st.divider()
+    scan_button = st.button("🔍 Run Enhanced Scan", type="primary", use_container_width=True)
 
 # Sidebar configuration
 with st.sidebar:
@@ -976,7 +124,10 @@ with st.sidebar:
             "RSI Period", 2, 50, st.session_state.indicator_params['rsi_period']
         )
         st.session_state.indicator_params['rsi_oversold'] = st.slider(
-            "RSI Oversold", 10, 40, st.session_state.indicator_params['rsi_oversold']
+            "RSI Oversold (BUY)", 10, 40, st.session_state.indicator_params['rsi_oversold']
+        )
+        st.session_state.indicator_params['rsi_overbought'] = st.slider(
+            "RSI Overbought (SELL)", 60, 90, st.session_state.indicator_params['rsi_overbought']
         )
         st.session_state.indicator_params['rsi_trend'] = st.slider(
             "RSI Trend Threshold", 40, 70, st.session_state.indicator_params['rsi_trend']
@@ -1009,7 +160,10 @@ with st.sidebar:
             "Stoch %K Smooth", 2, 5, st.session_state.indicator_params['stoch_smooth']
         )
         st.session_state.indicator_params['stoch_oversold'] = st.slider(
-            "Stoch Oversold", 10, 30, st.session_state.indicator_params['stoch_oversold']
+            "Stoch Oversold (BUY)", 10, 30, st.session_state.indicator_params['stoch_oversold']
+        )
+        st.session_state.indicator_params['stoch_overbought'] = st.slider(
+            "Stoch Overbought (SELL)", 70, 90, st.session_state.indicator_params['stoch_overbought']
         )
 
     with st.expander("Bollinger Bands", expanded=False):
@@ -1050,12 +204,9 @@ with st.sidebar:
             "Backtest Period (days)", 30, 365, st.session_state.indicator_params['backtest_days']
         )
 
-    st.divider()
-    scan_button = st.button("🔍 Run Enhanced Scan", type="primary", use_container_width=True)
-
 # Main content
 if scan_button:
-    with st.spinner("Running enhanced technical analysis scan..."):
+    with st.spinner("Running enhanced technical analysis scan for BUY & SELL signals..."):
         params = st.session_state.indicator_params
 
         BACKTEST_END_DATE = pd.Timestamp.now() - pd.Timedelta(days=1)
@@ -1063,13 +214,24 @@ if scan_button:
         BACKTEST_END_DATE_STR = BACKTEST_END_DATE.strftime('%Y-%m-%d')
         BACKTEST_START_DATE_STR = BACKTEST_START_DATE.strftime('%Y-%m-%d')
 
-        all_signals = {
+        # BUY signals containers
+        buy_signals = {
             'Mean Reversion': [],
             'Trend Following': [],
             'MACD Crossover': [],
             'Stochastic Oversold': [],
             'Bollinger Band Reversion': [],
             'OBV Accumulation': []
+        }
+
+        # SELL signals containers
+        sell_signals = {
+            'Mean Reversion': [],
+            'Trend Reversal': [],
+            'MACD Bearish Crossover': [],
+            'Stochastic Overbought': [],
+            'Bollinger Band Overbought': [],
+            'OBV Distribution': []
         }
 
         backtest_data = {}
@@ -1163,6 +325,7 @@ if scan_button:
                 last_adx = adx.iloc[-1]
                 last_stoch_k = stoch_k.iloc[-1]
                 last_stoch_d = stoch_d.iloc[-1]
+                last_bb_upper = bb_upper.iloc[-1]
                 last_bb_low = bb_low.iloc[-1]
                 last_bb_middle = bb_middle.iloc[-1]
                 last_bb_width = bb_width.iloc[-1]
@@ -1185,21 +348,30 @@ if scan_button:
                 signal_date = pd.to_datetime(BACKTEST_END_DATE_STR)
 
                 # Dynamic stops/targets using ATR
-                dynamic_stop_loss = last_close - (params['atr_stop_multiple'] * last_atr)
-                dynamic_take_profit = last_close + (params['atr_target_multiple'] * last_atr)
-                risk_reward = f"1:{params['atr_target_multiple'] / params['atr_stop_multiple']:.1f}"
+                dynamic_stop_loss_buy = last_close - (params['atr_stop_multiple'] * last_atr)
+                dynamic_take_profit_buy = last_close + (params['atr_target_multiple'] * last_atr)
+                risk_reward_buy = f"1:{params['atr_target_multiple'] / params['atr_stop_multiple']:.1f}"
 
-                # Strategy 1: Mean Reversion
+                # For SELL signals, reverse the logic
+                dynamic_stop_loss_sell = last_close + (params['atr_stop_multiple'] * last_atr)
+                dynamic_take_profit_sell = last_close - (params['atr_target_multiple'] * last_atr)
+                risk_reward_sell = f"1:{params['atr_target_multiple'] / params['atr_stop_multiple']:.1f}"
+
+                # ====================================================
+                # BUY SIGNALS
+                # ====================================================
+
+                # Strategy 1: Mean Reversion BUY
                 if (not pd.isna(last_rsi) and not pd.isna(prev_rsi) and
                         last_rsi < params['rsi_oversold'] and prev_rsi < params['rsi_oversold'] and
                         last_close < last_sma_short and last_volume > last_volume_sma and
                         last_rsi > prev_rsi):
-                    all_signals['Mean Reversion'].append({
+                    buy_signals['Mean Reversion'].append({
                         'Ticker': ticker,
                         'Buy Price': round(last_close, 2),
-                        'Sell Price': round(dynamic_take_profit, 2),
-                        'Stop Loss': round(dynamic_stop_loss, 2),
-                        'Risk/Reward': risk_reward,
+                        'Take Profit': round(dynamic_take_profit_buy, 2),
+                        'Stop Loss': round(dynamic_stop_loss_buy, 2),
+                        'Risk/Reward': risk_reward_buy,
                         'RSI': round(last_rsi, 2),
                         f'SMA{params["sma_short"]}': round(last_sma_short, 2),
                         'ATR': round(last_atr, 2),
@@ -1207,17 +379,17 @@ if scan_button:
                         'Signal Date': signal_date
                     })
 
-                # Strategy 2: Trend Following
+                # Strategy 2: Trend Following BUY
                 if (not pd.isna(last_rsi) and not pd.isna(last_adx) and
                         last_rsi > params['rsi_trend'] and last_close > last_sma_short and
                         last_sma_short > last_sma_long and last_volume > last_volume_sma and
                         last_adx > params['adx_threshold']):
-                    all_signals['Trend Following'].append({
+                    buy_signals['Trend Following'].append({
                         'Ticker': ticker,
                         'Buy Price': round(last_close, 2),
-                        'Sell Price': round(dynamic_take_profit, 2),
-                        'Stop Loss': round(dynamic_stop_loss, 2),
-                        'Risk/Reward': risk_reward,
+                        'Take Profit': round(dynamic_take_profit_buy, 2),
+                        'Stop Loss': round(dynamic_stop_loss_buy, 2),
+                        'Risk/Reward': risk_reward_buy,
                         'RSI': round(last_rsi, 2),
                         f'SMA{params["sma_short"]}': round(last_sma_short, 2),
                         f'SMA{params["sma_long"]}': round(last_sma_long, 2),
@@ -1226,16 +398,16 @@ if scan_button:
                         'Signal Date': signal_date
                     })
 
-                # Strategy 3: MACD Crossover
+                # Strategy 3: MACD Crossover BUY
                 if (not pd.isna(last_macd) and not pd.isna(prev_macd) and
                         prev_macd <= prev_macd_signal and last_macd > last_macd_signal and
                         last_macd < 0 and last_macd_histogram > 0 and last_close > last_sma_short):
-                    all_signals['MACD Crossover'].append({
+                    buy_signals['MACD Crossover'].append({
                         'Ticker': ticker,
                         'Buy Price': round(last_close, 2),
-                        'Sell Price': round(dynamic_take_profit, 2),
-                        'Stop Loss': round(dynamic_stop_loss, 2),
-                        'Risk/Reward': risk_reward,
+                        'Take Profit': round(dynamic_take_profit_buy, 2),
+                        'Stop Loss': round(dynamic_stop_loss_buy, 2),
+                        'Risk/Reward': risk_reward_buy,
                         'MACD': round(last_macd, 4),
                         'MACD Signal': round(last_macd_signal, 4),
                         'MACD Hist': round(last_macd_histogram, 4),
@@ -1243,30 +415,30 @@ if scan_button:
                         'Signal Date': signal_date
                     })
 
-                # Strategy 4: Stochastic Oversold
+                # Strategy 4: Stochastic Oversold BUY
                 if (not pd.isna(last_stoch_k) and not pd.isna(prev_stoch_k) and
                         prev_stoch_k <= prev_stoch_d and last_stoch_k > last_stoch_d and
                         prev_stoch_k < params['stoch_oversold'] and last_stoch_k > params['stoch_oversold']):
-                    all_signals['Stochastic Oversold'].append({
+                    buy_signals['Stochastic Oversold'].append({
                         'Ticker': ticker,
                         'Buy Price': round(last_close, 2),
-                        'Sell Price': round(dynamic_take_profit, 2),
-                        'Stop Loss': round(dynamic_stop_loss, 2),
-                        'Risk/Reward': risk_reward,
+                        'Take Profit': round(dynamic_take_profit_buy, 2),
+                        'Stop Loss': round(dynamic_stop_loss_buy, 2),
+                        'Risk/Reward': risk_reward_buy,
                         'Stoch %K': round(last_stoch_k, 2),
                         'Stoch %D': round(last_stoch_d, 2),
                         'ATR': round(last_atr, 2),
                         'Signal Date': signal_date
                     })
 
-                # Strategy 5: Bollinger Band Reversion
+                # Strategy 5: Bollinger Band Reversion BUY
                 if (not pd.isna(last_bb_low) and not pd.isna(last_rsi) and
                         last_close < last_bb_low and last_rsi < params['rsi_oversold'] and
                         last_bb_width > bb_width.iloc[-20:].mean()):
-                    all_signals['Bollinger Band Reversion'].append({
+                    buy_signals['Bollinger Band Reversion'].append({
                         'Ticker': ticker,
                         'Buy Price': round(last_close, 2),
-                        'Sell Price': round(last_bb_middle, 2),
+                        'Take Profit': round(last_bb_middle, 2),
                         'Stop Loss': round(last_bb_low * 0.99, 2),
                         'Risk/Reward': 'Dynamic',
                         'RSI': round(last_rsi, 2),
@@ -1278,18 +450,129 @@ if scan_button:
                         'Signal Date': signal_date
                     })
 
-                # Strategy 6: OBV Accumulation
+                # Strategy 6: OBV Accumulation BUY
                 if (not pd.isna(last_obv) and not pd.isna(last_obv_sma) and
                         last_obv > last_obv_sma and last_obv > obv_trend_ago and
                         last_close > last_sma_short and last_volume > last_volume_sma and
                         (last_obv > prev_obv or (last_close < prev_close and last_obv > prev_obv))):
-                    all_signals['OBV Accumulation'].append({
+                    buy_signals['OBV Accumulation'].append({
                         'Ticker': ticker,
                         'Buy Price': round(last_close, 2),
-                        'Sell Price': round(dynamic_take_profit, 2),
-                        'Stop Loss': round(dynamic_stop_loss, 2),
-                        'Risk/Reward': risk_reward,
+                        'Take Profit': round(dynamic_take_profit_buy, 2),
+                        'Stop Loss': round(dynamic_stop_loss_buy, 2),
+                        'Risk/Reward': risk_reward_buy,
                         'OBV Trend': 'Rising' if last_obv > obv_trend_ago else 'Flat',
+                        'OBV/SMA Ratio': round(last_obv / last_obv_sma, 2),
+                        'Volume Ratio': round(last_volume / last_volume_sma, 2),
+                        'ATR': round(last_atr, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # ====================================================
+                # SELL SIGNALS (Inverse logic)
+                # ====================================================
+
+                # Strategy 1: Mean Reversion SELL (Overbought reversal)
+                if (not pd.isna(last_rsi) and not pd.isna(prev_rsi) and
+                        last_rsi > params['rsi_overbought'] and prev_rsi > params['rsi_overbought'] and
+                        last_close > last_sma_short and last_volume > last_volume_sma and
+                        last_rsi < prev_rsi):  # RSI turning down
+                    sell_signals['Mean Reversion'].append({
+                        'Ticker': ticker,
+                        'Sell Price': round(last_close, 2),
+                        'Take Profit': round(dynamic_take_profit_sell, 2),
+                        'Stop Loss': round(dynamic_stop_loss_sell, 2),
+                        'Risk/Reward': risk_reward_sell,
+                        'RSI': round(last_rsi, 2),
+                        f'SMA{params["sma_short"]}': round(last_sma_short, 2),
+                        'ATR': round(last_atr, 2),
+                        'Volume Ratio': round(last_volume / last_volume_sma, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # Strategy 2: Trend Reversal SELL (Downtrend confirmation)
+                if (not pd.isna(last_rsi) and not pd.isna(last_adx) and
+                        last_rsi < params['rsi_trend'] and last_close < last_sma_short and
+                        last_sma_short < last_sma_long and last_volume > last_volume_sma and
+                        last_adx > params['adx_threshold']):
+                    sell_signals['Trend Reversal'].append({
+                        'Ticker': ticker,
+                        'Sell Price': round(last_close, 2),
+                        'Take Profit': round(dynamic_take_profit_sell, 2),
+                        'Stop Loss': round(dynamic_stop_loss_sell, 2),
+                        'Risk/Reward': risk_reward_sell,
+                        'RSI': round(last_rsi, 2),
+                        f'SMA{params["sma_short"]}': round(last_sma_short, 2),
+                        f'SMA{params["sma_long"]}': round(last_sma_long, 2),
+                        'ADX': round(last_adx, 2),
+                        'ATR': round(last_atr, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # Strategy 3: MACD Bearish Crossover SELL
+                if (not pd.isna(last_macd) and not pd.isna(prev_macd) and
+                        prev_macd >= prev_macd_signal and last_macd < last_macd_signal and
+                        last_macd > 0 and last_macd_histogram < 0 and last_close < last_sma_short):
+                    sell_signals['MACD Bearish Crossover'].append({
+                        'Ticker': ticker,
+                        'Sell Price': round(last_close, 2),
+                        'Take Profit': round(dynamic_take_profit_sell, 2),
+                        'Stop Loss': round(dynamic_stop_loss_sell, 2),
+                        'Risk/Reward': risk_reward_sell,
+                        'MACD': round(last_macd, 4),
+                        'MACD Signal': round(last_macd_signal, 4),
+                        'MACD Hist': round(last_macd_histogram, 4),
+                        'ATR': round(last_atr, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # Strategy 4: Stochastic Overbought SELL
+                if (not pd.isna(last_stoch_k) and not pd.isna(prev_stoch_k) and
+                        prev_stoch_k >= prev_stoch_d and last_stoch_k < last_stoch_d and
+                        prev_stoch_k > params['stoch_overbought'] and last_stoch_k < params['stoch_overbought']):
+                    sell_signals['Stochastic Overbought'].append({
+                        'Ticker': ticker,
+                        'Sell Price': round(last_close, 2),
+                        'Take Profit': round(dynamic_take_profit_sell, 2),
+                        'Stop Loss': round(dynamic_stop_loss_sell, 2),
+                        'Risk/Reward': risk_reward_sell,
+                        'Stoch %K': round(last_stoch_k, 2),
+                        'Stoch %D': round(last_stoch_d, 2),
+                        'ATR': round(last_atr, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # Strategy 5: Bollinger Band Overbought SELL
+                if (not pd.isna(last_bb_upper) and not pd.isna(last_rsi) and
+                        last_close > last_bb_upper and last_rsi > params['rsi_overbought'] and
+                        last_bb_width > bb_width.iloc[-20:].mean()):
+                    sell_signals['Bollinger Band Overbought'].append({
+                        'Ticker': ticker,
+                        'Sell Price': round(last_close, 2),
+                        'Take Profit': round(last_bb_middle, 2),
+                        'Stop Loss': round(last_bb_upper * 1.01, 2),
+                        'Risk/Reward': 'Dynamic',
+                        'RSI': round(last_rsi, 2),
+                        'Close': round(last_close, 2),
+                        'BB Upper': round(last_bb_upper, 2),
+                        'BB Middle': round(last_bb_middle, 2),
+                        'BB Width': round(last_bb_width, 4),
+                        'ATR': round(last_atr, 2),
+                        'Signal Date': signal_date
+                    })
+
+                # Strategy 6: OBV Distribution SELL
+                if (not pd.isna(last_obv) and not pd.isna(last_obv_sma) and
+                        last_obv < last_obv_sma and last_obv < obv_trend_ago and
+                        last_close < last_sma_short and last_volume > last_volume_sma and
+                        (last_obv < prev_obv or (last_close > prev_close and last_obv < prev_obv))):
+                    sell_signals['OBV Distribution'].append({
+                        'Ticker': ticker,
+                        'Sell Price': round(last_close, 2),
+                        'Take Profit': round(dynamic_take_profit_sell, 2),
+                        'Stop Loss': round(dynamic_stop_loss_sell, 2),
+                        'Risk/Reward': risk_reward_sell,
+                        'OBV Trend': 'Falling' if last_obv < obv_trend_ago else 'Flat',
                         'OBV/SMA Ratio': round(last_obv / last_obv_sma, 2),
                         'Volume Ratio': round(last_volume / last_volume_sma, 2),
                         'ATR': round(last_atr, 2),
@@ -1308,362 +591,64 @@ if scan_button:
             'start_date': BACKTEST_START_DATE_STR,
             'end_date': BACKTEST_END_DATE_STR
         }
-        st.session_state.all_signals = all_signals
+        st.session_state.buy_signals = buy_signals
+        st.session_state.sell_signals = sell_signals
         st.session_state.backtest_data = backtest_data
 
 # Display results
-if st.session_state.all_signals is not None:
-    all_signals = st.session_state.all_signals
+if st.session_state.buy_signals is not None and st.session_state.sell_signals is not None:
+    buy_signals = st.session_state.buy_signals
+    sell_signals = st.session_state.sell_signals
     backtest_data = st.session_state.backtest_data
     params = st.session_state.indicator_params
 
-    # Backtesting Visualization
-    st.header("📈 Enhanced Backtesting Visualization")
+    # Create two columns for BUY and SELL overview
+    col_buy, col_sell = st.columns(2)
 
-    available_tickers = list(backtest_data.keys())
+    total_buy_signals = sum(len(s) for s in buy_signals.values())
+    total_sell_signals = sum(len(s) for s in sell_signals.values())
 
-    if available_tickers:
-        selected_ticker = st.selectbox("Select Ticker for Detailed View", available_tickers)
+    with col_buy:
+        st.metric("🟢 Total BUY Signals", total_buy_signals)
+    with col_sell:
+        st.metric("🔴 Total SELL Signals", total_sell_signals)
 
-        if selected_ticker and selected_ticker in backtest_data:
-            bt_data = backtest_data[selected_ticker]
-            data = bt_data['data']
+    st.divider()
 
-            # Create visualization tabs
-            viz_tab1, viz_tab2, viz_tab3, viz_tab4, viz_tab5 = st.tabs([
-                "📊 Price & MA + ADX",
-                "📈 RSI & Stochastic",
-                "📉 MACD",
-                "〰️ Bollinger Bands",
-                "⚖️ OBV Analysis"
-            ])
+    # BUY Signals Section
+    st.header("🟢 BUY SIGNALS", divider="green")
 
-            with viz_tab1:
-                st.subheader(f"{selected_ticker} - Price Action, Moving Averages & ADX")
-
-                fig1 = make_subplots(
-                    rows=3, cols=1,
-                    shared_xaxes=True,
-                    vertical_spacing=0.08,
-                    row_heights=[0.5, 0.25, 0.25],
-                    subplot_titles=("Price & MAs", "Volume", "ADX")
-                )
-
-                # Price candlesticks
-                fig1.add_trace(
-                    go.Candlestick(x=data.index, open=data['Open'], high=data['High'],
-                                   low=data['Low'], close=data['Close'], name="Price"),
-                    row=1, col=1
-                )
-
-                # Moving averages
-                fig1.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['sma_short'],
-                               name=f"SMA {params['sma_short']}", line=dict(color='blue', width=1)),
-                    row=1, col=1
-                )
-                fig1.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['sma_long'],
-                               name=f"SMA {params['sma_long']}", line=dict(color='red', width=1)),
-                    row=1, col=1
-                )
-
-                # Volume
-                colors = ['green' if c >= o else 'red'
-                          for c, o in zip(data['Close'], data['Open'])]
-                fig1.add_trace(
-                    go.Bar(x=data.index, y=data['Volume'], name="Volume", marker_color=colors),
-                    row=2, col=1
-                )
-                fig1.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['volume_sma'],
-                               name=f"Vol SMA {params['sma_short']}", line=dict(color='orange', width=1)),
-                    row=2, col=1
-                )
-
-                # ADX
-                fig1.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['adx'],
-                               name="ADX", line=dict(color='purple', width=2)),
-                    row=3, col=1
-                )
-                fig1.add_hline(y=params['adx_threshold'], line_dash="dash",
-                               line_color="red", row=3, col=1,
-                               annotation_text=f"ADX {params['adx_threshold']}")
-
-                fig1.update_layout(height=700, showlegend=True, xaxis_rangeslider_visible=False)
-                st.plotly_chart(fig1, use_container_width=True)
-
-            with viz_tab2:
-                st.subheader(f"{selected_ticker} - RSI & Stochastic Oscillator")
-
-                fig2 = make_subplots(
-                    rows=2, cols=1,
-                    shared_xaxes=True,
-                    vertical_spacing=0.15,
-                    subplot_titles=("RSI", "Stochastic Oscillator")
-                )
-
-                # RSI
-                fig2.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['rsi'],
-                               name="RSI", line=dict(color='purple', width=2)),
-                    row=1, col=1
-                )
-                fig2.add_hline(y=70, line_dash="dash", line_color="red", row=1, col=1)
-                fig2.add_hline(y=params['rsi_oversold'], line_dash="dash",
-                               line_color="green", row=1, col=1)
-                fig2.add_hline(y=50, line_dash="dot", line_color="gray", row=1, col=1)
-
-                # Stochastic
-                fig2.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['stoch_k'],
-                               name="%K", line=dict(color='blue', width=2)),
-                    row=2, col=1
-                )
-                fig2.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['stoch_d'],
-                               name="%D", line=dict(color='red', width=2)),
-                    row=2, col=1
-                )
-                fig2.add_hline(y=80, line_dash="dash", line_color="red", row=2, col=1)
-                fig2.add_hline(y=params['stoch_oversold'], line_dash="dash",
-                               line_color="green", row=2, col=1)
-
-                fig2.update_layout(height=600, showlegend=True)
-                st.plotly_chart(fig2, use_container_width=True)
-
-            with viz_tab3:
-                st.subheader(f"{selected_ticker} - MACD Analysis")
-
-                fig3 = make_subplots(
-                    rows=2, cols=1,
-                    shared_xaxes=True,
-                    vertical_spacing=0.1,
-                    row_heights=[0.6, 0.4],
-                    subplot_titles=("Price", "MACD")
-                )
-
-                fig3.add_trace(
-                    go.Candlestick(x=data.index, open=data['Open'], high=data['High'],
-                                   low=data['Low'], close=data['Close'], name="Price"),
-                    row=1, col=1
-                )
-
-                # MACD
-                fig3.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['macd_line'],
-                               name="MACD", line=dict(color='blue', width=2)),
-                    row=2, col=1
-                )
-                fig3.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['macd_signal'],
-                               name="Signal", line=dict(color='red', width=2)),
-                    row=2, col=1
-                )
-
-                # Histogram
-                hist_colors = ['green' if v >= 0 else 'red' for v in bt_data['macd_histogram']]
-                fig3.add_trace(
-                    go.Bar(x=data.index, y=bt_data['macd_histogram'],
-                           name="Histogram", marker_color=hist_colors),
-                    row=2, col=1
-                )
-                fig3.add_hline(y=0, line_dash="solid", line_color="black", row=2, col=1)
-
-                fig3.update_layout(height=600, showlegend=True, xaxis_rangeslider_visible=False)
-                st.plotly_chart(fig3, use_container_width=True)
-
-            with viz_tab4:
-                st.subheader(f"{selected_ticker} - Bollinger Bands & ATR")
-
-                fig4 = make_subplots(
-                    rows=2, cols=1,
-                    shared_xaxes=True,
-                    vertical_spacing=0.1,
-                    row_heights=[0.6, 0.4],
-                    subplot_titles=("Bollinger Bands", "ATR - Average True Range")
-                )
-
-                # Bollinger Bands
-                fig4.add_trace(
-                    go.Scatter(x=data.index, y=data['Close'],
-                               name="Close", line=dict(color='black', width=2)),
-                    row=1, col=1
-                )
-                fig4.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['bb_upper'],
-                               name="Upper Band", line=dict(color='gray', width=1, dash='dash')),
-                    row=1, col=1
-                )
-                fig4.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['bb_middle'],
-                               name="Middle Band", line=dict(color='blue', width=1)),
-                    row=1, col=1
-                )
-                fig4.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['bb_low'],
-                               name="Lower Band", line=dict(color='gray', width=1, dash='dash'),
-                               fill='tonexty', fillcolor='rgba(128, 128, 128, 0.1)'),
-                    row=1, col=1
-                )
-
-                # ATR
-                fig4.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['atr'],
-                               name="ATR", line=dict(color='orange', width=2)),
-                    row=2, col=1
-                )
-
-                fig4.update_layout(height=600, showlegend=True)
-                st.plotly_chart(fig4, use_container_width=True)
-
-            with viz_tab5:
-                st.subheader(f"{selected_ticker} - OBV Analysis")
-
-                fig5 = make_subplots(
-                    rows=2, cols=1,
-                    shared_xaxes=True,
-                    vertical_spacing=0.1,
-                    row_heights=[0.5, 0.5],
-                    subplot_titles=("Price", "On-Balance Volume (OBV)")
-                )
-
-                fig5.add_trace(
-                    go.Candlestick(x=data.index, open=data['Open'], high=data['High'],
-                                   low=data['Low'], close=data['Close'], name="Price"),
-                    row=1, col=1
-                )
-
-                fig5.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['obv'],
-                               name="OBV", line=dict(color='green', width=2)),
-                    row=2, col=1
-                )
-                fig5.add_trace(
-                    go.Scatter(x=data.index, y=bt_data['obv_sma'],
-                               name=f"OBV SMA {params['obv_sma_period']}",
-                               line=dict(color='orange', width=2)),
-                    row=2, col=1
-                )
-
-                fig5.update_layout(height=600, showlegend=True, xaxis_rangeslider_visible=False)
-                st.plotly_chart(fig5, use_container_width=True)
-
-            # Signal summary for selected ticker
-            st.subheader(f"🎯 Active Signals for {selected_ticker}")
-            signals_for_ticker = []
-            for strategy_name, signals in all_signals.items():
-                for signal in signals:
-                    if signal['Ticker'] == selected_ticker:
-                        signal_copy = signal.copy()
-                        signal_copy['Strategy'] = strategy_name
-                        signals_for_ticker.append(signal_copy)
-
-            if signals_for_ticker:
-                df_ticker_signals = pd.DataFrame(signals_for_ticker)
-                cols = ['Strategy', 'Buy Price', 'Sell Price', 'Stop Loss', 'Risk/Reward', 'Signal Date']
-                df_ticker_signals = df_ticker_signals[[c for c in cols if c in df_ticker_signals.columns]]
-                st.dataframe(df_ticker_signals, use_container_width=True, hide_index=True)
-            else:
-                st.info(f"No active signals for {selected_ticker}")
-
-    # Summary Table
-    st.header("📊 Combined Signal Summary")
-
-    tickers_with_signals = set()
-    for signals in all_signals.values():
+    buy_tickers = set()
+    for signals in buy_signals.values():
         for signal in signals:
-            tickers_with_signals.add(signal['Ticker'])
+            buy_tickers.add(signal['Ticker'])
 
-    if tickers_with_signals:
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Tickers Scanned", len(st.session_state.tickers))
-        with col2:
-            st.metric("Tickers with Signals", len(tickers_with_signals))
-        with col3:
-            total_signals = sum(len(s) for s in all_signals.values())
-            st.metric("Total Signals", total_signals)
-        with col4:
-            hit_rate = (len(tickers_with_signals) / len(st.session_state.tickers)) * 100
-            st.metric("Hit Rate", f"{hit_rate:.1f}%")
-
-        # Summary matrix
-        summary_data = []
-        for ticker in sorted(tickers_with_signals):
+    if buy_tickers:
+        # BUY Summary Matrix
+        st.subheader("BUY Signal Summary Matrix")
+        buy_summary_data = []
+        for ticker in sorted(buy_tickers):
             row = {'Ticker': ticker}
-            for strategy in all_signals.keys():
-                row[strategy] = '✅' if any(s['Ticker'] == ticker for s in all_signals[strategy]) else ''
-            row['Total'] = sum(1 for v in list(row.values())[1:] if v == '✅')
-            summary_data.append(row)
+            for strategy in buy_signals.keys():
+                row[strategy] = '✅' if any(s['Ticker'] == ticker for s in buy_signals[strategy]) else ''
+            row['Total BUY'] = sum(1 for v in list(row.values())[1:] if v == '✅')
+            buy_summary_data.append(row)
 
-        df_summary = pd.DataFrame(summary_data)
-        df_summary = df_summary.sort_values('Total', ascending=False)
+        df_buy_summary = pd.DataFrame(buy_summary_data)
+        df_buy_summary = df_buy_summary.sort_values('Total BUY', ascending=False)
+        st.dataframe(df_buy_summary, use_container_width=True, hide_index=True)
 
-        st.dataframe(
-            df_summary,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                'Ticker': st.column_config.TextColumn('Ticker', width='medium'),
-                'Total': st.column_config.NumberColumn('Total Signals', width='small')
-            }
-        )
+        # Detailed BUY strategies
+        st.subheader("Detailed BUY Strategy Breakdown")
+        buy_tabs = st.tabs(list(buy_signals.keys()))
 
-        # Detailed strategy views
-        st.subheader("📋 Detailed Strategy Breakdown")
-
-        strategy_tabs = st.tabs(list(all_signals.keys()))
-
-        for tab, (strategy_name, signals) in zip(strategy_tabs, all_signals.items()):
+        for tab, (strategy_name, signals) in zip(buy_tabs, buy_signals.items()):
             with tab:
                 if signals:
-                    st.metric(f"{strategy_name} Signals", len(signals))
-                    df_strategy = pd.DataFrame(signals)
-                    if 'Signal Date' in df_strategy.columns:
-                        df_strategy['Signal Date'] = df_strategy['Signal Date'].dt.strftime('%Y-%m-%d')
-                    st.dataframe(df_strategy, use_container_width=True, hide_index=True)
+                    st.metric(f"{strategy_name}", len(signals))
+                    df = pd.DataFrame(signals)
+                    if 'Signal Date' in df.columns:
+                        df['Signal Date'] = df['Signal Date'].dt.strftime('%Y-%m-%d')
+                    st.dataframe(df, use_container_width=True, hide_index=True)
 
-                    csv = df_strategy.to_csv(index=False)
-                    st.download_button(
-                        f"📥 Download {strategy_name}",
-                        csv,
-                        f"{strategy_name.lower().replace(' ', '_')}_{st.session_state.scan_results['end_date']}.csv",
-                        "text/csv",
-                        key=f"dl_{strategy_name}"
-                    )
-                else:
-                    st.info(f"No {strategy_name} signals found")
-
-        # Combined export
-        st.divider()
-        st.subheader("📦 Export All Signals")
-
-        all_signals_combined = []
-        for strategy_name, signals in all_signals.items():
-            for signal in signals:
-                signal_copy = signal.copy()
-                signal_copy['Strategy'] = strategy_name
-                all_signals_combined.append(signal_copy)
-
-        if all_signals_combined:
-            df_all = pd.DataFrame(all_signals_combined)
-            csv_all = df_all.to_csv(index=False)
-            st.download_button(
-                "📥 Download All Signals (CSV)",
-                csv_all,
-                f"all_signals_{st.session_state.scan_results['end_date']}.csv",
-                "text/csv",
-                key="dl_all"
-            )
-
-    else:
-        st.info("No signals found for any ticker in the current scan period.")
-
-    # Scan information
-    st.divider()
-    st.caption(
-        f"Scan completed for period: {st.session_state.scan_results['start_date']} to {st.session_state.scan_results['end_date']}")
-    st.caption(
-        f"Risk Management: ATR-based stops ({params['atr_stop_multiple']}x) and targets ({params['atr_target_multiple']}x)")
+                    csv = df.to_csv(index=False)
